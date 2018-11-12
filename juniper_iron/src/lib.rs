@@ -193,34 +193,6 @@ where
     }
 }
 
-impl GraphQLBatchRequest {
-    pub fn execute<'a, CtxT, QueryT, MutationT>(
-        &'a self,
-        root_node: &RootNode<QueryT, MutationT>,
-        context: &CtxT,
-    ) -> GraphQLBatchResponse<'a>
-    where
-        QueryT: GraphQLType<Context = CtxT>,
-        MutationT: GraphQLType<Context = CtxT>,
-    {
-        match self {
-            &GraphQLBatchRequest::Single(ref request) =>
-                GraphQLBatchResponse::Single(request.execute(root_node, context)),
-            &GraphQLBatchRequest::Batch(ref requests) =>
-                GraphQLBatchResponse::Batch(requests.iter().map(|request| request.execute(root_node, context)).collect()),
-        }
-    }
-}
-
-impl<'a> GraphQLBatchResponse<'a> {
-    fn is_ok(&self) -> bool {
-        match self {
-            &GraphQLBatchResponse::Single(ref response) => response.is_ok(),
-            &GraphQLBatchResponse::Batch(ref responses) => responses.iter().fold(true, |ok, response| ok && response.is_ok()),
-        }
-    }
-}
-
 /// Handler that executes `GraphQL` queries in the given schema
 ///
 /// The handler responds to GET requests and POST requests only. In GET
