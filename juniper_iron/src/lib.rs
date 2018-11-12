@@ -193,20 +193,6 @@ where
     }
 }
 
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum GraphQLBatchRequest {
-    Single(http::GraphQLRequest),
-    Batch(Vec<http::GraphQLRequest>),
-}
-
-#[derive(Serialize)]
-#[serde(untagged)]
-enum GraphQLBatchResponse<'a> {
-    Single(http::GraphQLResponse<'a>),
-    Batch(Vec<http::GraphQLResponse<'a>>),
-}
-
 impl GraphQLBatchRequest {
     pub fn execute<'a, CtxT, QueryT, MutationT>(
         &'a self,
