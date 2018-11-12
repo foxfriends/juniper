@@ -4,16 +4,46 @@ use std::borrow::Cow;
 use std::fmt;
 
 use ast::{FromInputValue, InputValue, Type};
+use parser::{ParseError, ScalarToken};
+use schema::model::SchemaType;
 use types::base::TypeKind;
+use value::{DefaultScalarValue, ParseScalarValue, ScalarRefValue, ScalarValue};
+
+/// Whether an item is deprecated, with context.
+#[derive(Debug, PartialEq, Hash, Clone)]
+pub enum DeprecationStatus {
+    /// The field/variant is not deprecated.
+    Current,
+    /// The field/variant is deprecated, with an optional reason
+    Deprecated(Option<String>),
+}
+
+impl DeprecationStatus {
+    /// If this deprecation status indicates the item is deprecated.
+    pub fn is_deprecated(&self) -> bool {
+        match self {
+            &DeprecationStatus::Current => false,
+            &DeprecationStatus::Deprecated(_) => true,
+        }
+    }
+
+    /// An optional reason for the deprecation, or none if `Current`.
+    pub fn reason(&self) -> Option<&String> {
+        match self {
+            &DeprecationStatus::Current => None,
+            &DeprecationStatus::Deprecated(ref reason) => reason.as_ref(),
+        }
+    }
+}
 
 /// Scalar type metadata
-pub struct ScalarMeta<'a> {
+pub struct ScalarMeta<'a, S> {
     #[doc(hidden)]
     pub name: Cow<'a, str>,
     #[doc(hidden)]
     pub description: Option<String>,
-    #[doc(hidden)]
-    pub try_parse_fn: Box<Fn(&InputValue) -> bool + Send + Sync>,
+    pub(crate) try_parse_fn: for<'b> fn(&'b InputValue<S>) -> bool,
+    pub(crate) parse_fn: for<'b> fn(ScalarToken<'b>) -> Result<S, ParseError<'b>>,
 }
 
 /// List type metadata
@@ -32,38 +62,37 @@ pub struct NullableMeta<'a> {
 
 /// Object type metadata
 #[derive(Debug)]
-pub struct ObjectMeta<'a> {
+pub struct ObjectMeta<'a, S> {
     #[doc(hidden)]
     pub name: Cow<'a, str>,
     #[doc(hidden)]
     pub description: Option<String>,
     #[doc(hidden)]
-    pub fields: Vec<Field<'a>>,
+    pub fields: Vec<Field<'a, S>>,
     #[doc(hidden)]
     pub interface_names: Vec<String>,
 }
 
 /// Enum type metadata
-pub struct EnumMeta<'a> {
+pub struct EnumMeta<'a, S> {
     #[doc(hidden)]
     pub name: Cow<'a, str>,
     #[doc(hidden)]
     pub description: Option<String>,
     #[doc(hidden)]
     pub values: Vec<EnumValue>,
-    #[doc(hidden)]
-    pub try_parse_fn: Box<Fn(&InputValue) -> bool + Send + Sync>,
+    pub(crate) try_parse_fn: for<'b> fn(&'b InputValue<S>) -> bool,
 }
 
 /// Interface type metadata
 #[derive(Debug)]
-pub struct InterfaceMeta<'a> {
+pub struct InterfaceMeta<'a, S> {
     #[doc(hidden)]
     pub name: Cow<'a, str>,
     #[doc(hidden)]
     pub description: Option<String>,
     #[doc(hidden)]
-    pub fields: Vec<Field<'a>>,
+    pub fields: Vec<Field<'a, S>>,
 }
 
 /// Union type metadata
@@ -78,15 +107,14 @@ pub struct UnionMeta<'a> {
 }
 
 /// Input object metadata
-pub struct InputObjectMeta<'a> {
+pub struct InputObjectMeta<'a, S> {
     #[doc(hidden)]
     pub name: Cow<'a, str>,
     #[doc(hidden)]
     pub description: Option<String>,
     #[doc(hidden)]
-    pub input_fields: Vec<Argument<'a>>,
-    #[doc(hidden)]
-    pub try_parse_fn: Box<Fn(&InputValue) -> bool + Send + Sync>,
+    pub input_fields: Vec<Argument<'a, S>>,
+    pub(crate) try_parse_fn: for<'b> fn(&'b InputValue<S>) -> bool,
 }
 
 /// A placeholder for not-yet-registered types
@@ -101,45 +129,45 @@ pub struct PlaceholderMeta<'a> {
 
 /// Generic type metadata
 #[derive(Debug)]
-pub enum MetaType<'a> {
+pub enum MetaType<'a, S = DefaultScalarValue> {
     #[doc(hidden)]
-    Scalar(ScalarMeta<'a>),
+    Scalar(ScalarMeta<'a, S>),
     #[doc(hidden)]
     List(ListMeta<'a>),
     #[doc(hidden)]
     Nullable(NullableMeta<'a>),
     #[doc(hidden)]
-    Object(ObjectMeta<'a>),
+    Object(ObjectMeta<'a, S>),
     #[doc(hidden)]
-    Enum(EnumMeta<'a>),
+    Enum(EnumMeta<'a, S>),
     #[doc(hidden)]
-    Interface(InterfaceMeta<'a>),
+    Interface(InterfaceMeta<'a, S>),
     #[doc(hidden)]
     Union(UnionMeta<'a>),
     #[doc(hidden)]
-    InputObject(InputObjectMeta<'a>),
+    InputObject(InputObjectMeta<'a, S>),
     #[doc(hidden)]
     Placeholder(PlaceholderMeta<'a>),
 }
 
 /// Metadata for a field
 #[derive(Debug, Clone)]
-pub struct Field<'a> {
+pub struct Field<'a, S> {
     #[doc(hidden)]
     pub name: String,
     #[doc(hidden)]
     pub description: Option<String>,
     #[doc(hidden)]
-    pub arguments: Option<Vec<Argument<'a>>>,
+    pub arguments: Option<Vec<Argument<'a, S>>>,
     #[doc(hidden)]
     pub field_type: Type<'a>,
     #[doc(hidden)]
-    pub deprecation_reason: Option<String>,
+    pub deprecation_status: DeprecationStatus,
 }
 
 /// Metadata for an argument to a field
 #[derive(Debug, Clone)]
-pub struct Argument<'a> {
+pub struct Argument<'a, S> {
     #[doc(hidden)]
     pub name: String,
     #[doc(hidden)]
@@ -147,7 +175,7 @@ pub struct Argument<'a> {
     #[doc(hidden)]
     pub arg_type: Type<'a>,
     #[doc(hidden)]
-    pub default_value: Option<InputValue>,
+    pub default_value: Option<InputValue<S>>,
 }
 
 /// Metadata for a single value in an enum
@@ -162,13 +190,11 @@ pub struct EnumValue {
     /// Note: this is not the description of the enum itself; it's the
     /// description of this enum _value_.
     pub description: Option<String>,
-    /// The optional deprecation reason
-    ///
-    /// If this is `Some`, the field will be considered `isDeprecated`.
-    pub deprecation_reason: Option<String>,
+    /// Whether the field is deprecated or not, with an optional reason.
+    pub deprecation_status: DeprecationStatus,
 }
 
-impl<'a> MetaType<'a> {
+impl<'a, S> MetaType<'a, S> {
     /// Access the name of the type, if applicable
     ///
     /// Lists, non-null wrappers, and placeholders don't have names.
@@ -232,7 +258,7 @@ impl<'a> MetaType<'a> {
     /// Access a field's meta data given its name
     ///
     /// Only objects and interfaces have fields. This method always returns `None` for other types.
-    pub fn field_by_name(&self, name: &str) -> Option<&Field> {
+    pub fn field_by_name(&self, name: &str) -> Option<&Field<S>> {
         match *self {
             MetaType::Object(ObjectMeta { ref fields, .. })
             | MetaType::Interface(InterfaceMeta { ref fields, .. }) => {
@@ -245,7 +271,7 @@ impl<'a> MetaType<'a> {
     /// Access an input field's meta data given its name
     ///
     /// Only input objects have input fields. This method always returns `None` for other types.
-    pub fn input_field_by_name(&self, name: &str) -> Option<&Argument> {
+    pub fn input_field_by_name(&self, name: &str) -> Option<&Argument<S>> {
         match *self {
             MetaType::InputObject(InputObjectMeta {
                 ref input_fields, ..
@@ -283,7 +309,7 @@ impl<'a> MetaType<'a> {
     /// `true` if it can be parsed as the provided type.
     ///
     /// Only scalars, enums, and input objects have parse functions.
-    pub fn input_value_parse_fn(&self) -> Option<&Box<Fn(&InputValue) -> bool + Send + Sync>> {
+    pub fn input_value_parse_fn(&self) -> Option<for<'b> fn(&'b InputValue<S>) -> bool> {
         match *self {
             MetaType::Scalar(ScalarMeta {
                 ref try_parse_fn, ..
@@ -293,7 +319,7 @@ impl<'a> MetaType<'a> {
             })
             | MetaType::InputObject(InputObjectMeta {
                 ref try_parse_fn, ..
-            }) => Some(try_parse_fn),
+            }) => Some(*try_parse_fn),
             _ => None,
         }
     }
@@ -337,30 +363,54 @@ impl<'a> MetaType<'a> {
             _ => false,
         }
     }
+
+    pub(crate) fn fields<'b>(&self, schema: &'b SchemaType<S>) -> Option<Vec<&'b Field<'b, S>>> {
+        schema.lookup_type(&self.as_type()).and_then(|tpe| {
+            match *tpe {
+                MetaType::Interface(ref i) => Some(i.fields.iter().collect()),
+                MetaType::Object(ref o) => Some(o.fields.iter().collect()),
+                MetaType::Union(ref u) => Some(
+                    u.of_type_names
+                        .iter()
+                        .filter_map(|n| schema.concrete_type_by_name(n))
+                        .filter_map(|t| t.fields(schema))
+                        .flat_map(|f| f)
+                        .collect(),
+                ),
+                _ => None,
+            }
+        })
+    }
 }
 
-impl<'a> ScalarMeta<'a> {
+impl<'a, S> ScalarMeta<'a, S>
+where
+    S: ScalarValue + 'a,
+{
     /// Build a new scalar type metadata with the specified name
-    pub fn new<T: FromInputValue>(name: Cow<'a, str>) -> ScalarMeta<'a> {
+    pub fn new<T>(name: Cow<'a, str>) -> Self
+    where
+        T: FromInputValue<S> + ParseScalarValue<S> + 'a,
+        for<'b> &'b S: ScalarRefValue<'b>,
+    {
         ScalarMeta {
             name: name,
             description: None,
-            try_parse_fn: Box::new(|v: &InputValue| {
-                <T as FromInputValue>::from_input_value(v).is_some()
-            }),
+            try_parse_fn: try_parse_fn::<S, T>,
+            parse_fn: <T as ParseScalarValue<S>>::from_str,
         }
     }
 
     /// Set the description for the given scalar type
     ///
     /// If a description already was set prior to calling this method, it will be overwritten.
-    pub fn description(mut self, description: &str) -> ScalarMeta<'a> {
+    pub fn description(mut self, description: &str) -> ScalarMeta<'a, S> {
         self.description = Some(description.to_owned());
         self
     }
 
     /// Wrap the scalar in a generic meta type
-    pub fn into_meta(self) -> MetaType<'a> {
+    pub fn into_meta(self) -> MetaType<'a, S> {
         MetaType::Scalar(self)
     }
 }
@@ -372,7 +422,7 @@ impl<'a> ListMeta<'a> {
     }
 
     /// Wrap the list in a generic meta type
-    pub fn into_meta(self) -> MetaType<'a> {
+    pub fn into_meta<S>(self) -> MetaType<'a, S> {
         MetaType::List(self)
     }
 }
@@ -384,14 +434,17 @@ impl<'a> NullableMeta<'a> {
     }
 
     /// Wrap the nullable type in a generic meta type
-    pub fn into_meta(self) -> MetaType<'a> {
+    pub fn into_meta<S>(self) -> MetaType<'a, S> {
         MetaType::Nullable(self)
     }
 }
 
-impl<'a> ObjectMeta<'a> {
+impl<'a, S> ObjectMeta<'a, S>
+where
+    S: ScalarValue,
+{
     /// Build a new object type with the specified name and fields
-    pub fn new(name: Cow<'a, str>, fields: &[Field<'a>]) -> ObjectMeta<'a> {
+    pub fn new(name: Cow<'a, str>, fields: &[Field<'a, S>]) -> Self {
         ObjectMeta {
             name: name,
             description: None,
@@ -403,7 +456,7 @@ impl<'a> ObjectMeta<'a> {
     /// Set the description for the object
     ///
     /// If a description was provided prior to calling this method, it will be overwritten.
-    pub fn description(mut self, description: &str) -> ObjectMeta<'a> {
+    pub fn description(mut self, description: &str) -> ObjectMeta<'a, S> {
         self.description = Some(description.to_owned());
         self
     }
@@ -412,7 +465,7 @@ impl<'a> ObjectMeta<'a> {
     ///
     /// If a list of interfaces already was provided prior to calling this method, they will be
     /// overwritten.
-    pub fn interfaces(mut self, interfaces: &[Type<'a>]) -> ObjectMeta<'a> {
+    pub fn interfaces(mut self, interfaces: &[Type<'a>]) -> ObjectMeta<'a, S> {
         self.interface_names = interfaces
             .iter()
             .map(|t| t.innermost_name().to_owned())
@@ -421,41 +474,49 @@ impl<'a> ObjectMeta<'a> {
     }
 
     /// Wrap this object type in a generic meta type
-    pub fn into_meta(self) -> MetaType<'a> {
+    pub fn into_meta(self) -> MetaType<'a, S> {
         MetaType::Object(self)
     }
 }
 
-impl<'a> EnumMeta<'a> {
+impl<'a, S> EnumMeta<'a, S>
+where
+    S: ScalarValue + 'a,
+{
     /// Build a new enum type with the specified name and possible values
-    pub fn new<T: FromInputValue>(name: Cow<'a, str>, values: &[EnumValue]) -> EnumMeta<'a> {
+    pub fn new<T>(name: Cow<'a, str>, values: &[EnumValue]) -> Self
+    where
+        T: FromInputValue<S>,
+        for<'b> &'b S: ScalarRefValue<'b>,
+    {
         EnumMeta {
             name: name,
             description: None,
             values: values.to_vec(),
-            try_parse_fn: Box::new(|v: &InputValue| {
-                <T as FromInputValue>::from_input_value(v).is_some()
-            }),
+            try_parse_fn: try_parse_fn::<S, T>,
         }
     }
 
     /// Set the description of the type
     ///
     /// If a description was provided prior to calling this method, it will be overwritten
-    pub fn description(mut self, description: &str) -> EnumMeta<'a> {
+    pub fn description(mut self, description: &str) -> EnumMeta<'a, S> {
         self.description = Some(description.to_owned());
         self
     }
 
     /// Wrap this enum type in a generic meta type
-    pub fn into_meta(self) -> MetaType<'a> {
+    pub fn into_meta(self) -> MetaType<'a, S> {
         MetaType::Enum(self)
     }
 }
 
-impl<'a> InterfaceMeta<'a> {
+impl<'a, S> InterfaceMeta<'a, S>
+where
+    S: ScalarValue,
+{
     /// Build a new interface type with the specified name and fields
-    pub fn new(name: Cow<'a, str>, fields: &[Field<'a>]) -> InterfaceMeta<'a> {
+    pub fn new(name: Cow<'a, str>, fields: &[Field<'a, S>]) -> InterfaceMeta<'a, S> {
         InterfaceMeta {
             name: name,
             description: None,
@@ -466,13 +527,13 @@ impl<'a> InterfaceMeta<'a> {
     /// Set the description of the type
     ///
     /// If a description was provided prior to calling this method, it will be overwritten.
-    pub fn description(mut self, description: &str) -> InterfaceMeta<'a> {
+    pub fn description(mut self, description: &str) -> InterfaceMeta<'a, S> {
         self.description = Some(description.to_owned());
         self
     }
 
     /// Wrap this interface type in a generic meta type
-    pub fn into_meta(self) -> MetaType<'a> {
+    pub fn into_meta(self) -> MetaType<'a, S> {
         MetaType::Interface(self)
     }
 }
@@ -499,54 +560,78 @@ impl<'a> UnionMeta<'a> {
     }
 
     /// Wrap this union type in a generic meta type
-    pub fn into_meta(self) -> MetaType<'a> {
+    pub fn into_meta<S>(self) -> MetaType<'a, S> {
         MetaType::Union(self)
     }
 }
 
-impl<'a> InputObjectMeta<'a> {
+impl<'a, S> InputObjectMeta<'a, S>
+where
+    S: ScalarValue,
+{
     /// Build a new input type with the specified name and input fields
-    pub fn new<T: FromInputValue>(
-        name: Cow<'a, str>,
-        input_fields: &[Argument<'a>],
-    ) -> InputObjectMeta<'a> {
+    pub fn new<T: FromInputValue<S>>(name: Cow<'a, str>, input_fields: &[Argument<'a, S>]) -> Self
+    where
+        for<'b> &'b S: ScalarRefValue<'b>,
+    {
         InputObjectMeta {
             name: name,
             description: None,
             input_fields: input_fields.to_vec(),
-            try_parse_fn: Box::new(|v: &InputValue| {
-                <T as FromInputValue>::from_input_value(v).is_some()
-            }),
+            try_parse_fn: try_parse_fn::<S, T>,
         }
     }
 
     /// Set the description of the type
     ///
     /// If a description was provided prior to calling this method, it will be overwritten.
-    pub fn description(mut self, description: &str) -> InputObjectMeta<'a> {
+    pub fn description(mut self, description: &str) -> InputObjectMeta<'a, S> {
         self.description = Some(description.to_owned());
         self
     }
 
     /// Wrap this union type in a generic meta type
-    pub fn into_meta(self) -> MetaType<'a> {
+    pub fn into_meta(self) -> MetaType<'a, S> {
         MetaType::InputObject(self)
     }
 }
 
-impl<'a> Field<'a> {
+impl<'a, S> Field<'a, S> {
     /// Set the description of the field
     ///
     /// This overwrites the description if any was previously set.
-    pub fn description(mut self, description: &str) -> Field<'a> {
+    pub fn description(mut self, description: &str) -> Self {
         self.description = Some(description.to_owned());
+        self
+    }
+
+    /// Adds a (multi)line doc string to the description of the field.
+    /// Any leading or trailing newlines will be removed.
+    ///
+    /// If the docstring contains newlines, repeated leading tab and space characters
+    /// will be removed from the beginning of each line.
+    ///
+    /// If the description hasn't been set, the description is set to the provided line.
+    /// Otherwise, the doc string is added to the current description after a newline.
+    pub fn push_docstring(mut self, multiline: &[&str]) -> Field<'a, S> {
+        if let Some(docstring) = clean_docstring(multiline) {
+            match &mut self.description {
+                &mut Some(ref mut desc) => {
+                    desc.push('\n');
+                    desc.push_str(&docstring);
+                }
+                desc @ &mut None => {
+                    *desc = Some(docstring);
+                }
+            }
+        }
         self
     }
 
     /// Add an argument to the field
     ///
     /// Arguments are unordered and can't contain duplicates by name.
-    pub fn argument(mut self, argument: Argument<'a>) -> Field<'a> {
+    pub fn argument(mut self, argument: Argument<'a, S>) -> Self {
         match self.arguments {
             None => {
                 self.arguments = Some(vec![argument]);
@@ -559,18 +644,18 @@ impl<'a> Field<'a> {
         self
     }
 
-    /// Set the deprecation reason
+    /// Set the field to be deprecated with an optional reason.
     ///
     /// This overwrites the deprecation reason if any was previously set.
-    pub fn deprecated(mut self, reason: &str) -> Field<'a> {
-        self.deprecation_reason = Some(reason.to_owned());
+    pub fn deprecated(mut self, reason: Option<&str>) -> Self {
+        self.deprecation_status = DeprecationStatus::Deprecated(reason.map(|s| s.to_owned()));
         self
     }
 }
 
-impl<'a> Argument<'a> {
+impl<'a, S> Argument<'a, S> {
     #[doc(hidden)]
-    pub fn new(name: &str, arg_type: Type<'a>) -> Argument<'a> {
+    pub fn new(name: &str, arg_type: Type<'a>) -> Self {
         Argument {
             name: name.to_owned(),
             description: None,
@@ -582,15 +667,38 @@ impl<'a> Argument<'a> {
     /// Set the description of the argument
     ///
     /// This overwrites the description if any was previously set.
-    pub fn description(mut self, description: &str) -> Argument<'a> {
+    pub fn description(mut self, description: &str) -> Self {
         self.description = Some(description.to_owned());
+        self
+    }
+
+    /// Adds a (multi)line doc string to the description of the field.
+    /// Any leading or trailing newlines will be removed.
+    ///
+    /// If the docstring contains newlines, repeated leading tab and space characters
+    /// will be removed from the beginning of each line.
+    ///
+    /// If the description hasn't been set, the description is set to the provided line.
+    /// Otherwise, the doc string is added to the current description after a newline.
+    pub fn push_docstring(mut self, multiline: &[&str]) -> Argument<'a, S> {
+        if let Some(docstring) = clean_docstring(multiline) {
+            match &mut self.description {
+                &mut Some(ref mut desc) => {
+                    desc.push('\n');
+                    desc.push_str(&docstring);
+                }
+                desc @ &mut None => {
+                    *desc = Some(docstring)
+                }
+            }
+        }
         self
     }
 
     /// Set the default value of the argument
     ///
     /// This overwrites the description if any was previously set.
-    pub fn default_value(mut self, default_value: InputValue) -> Argument<'a> {
+    pub fn default_value(mut self, default_value: InputValue<S>) -> Self {
         self.default_value = Some(default_value);
         self
     }
@@ -602,7 +710,7 @@ impl EnumValue {
         EnumValue {
             name: name.to_owned(),
             description: None,
-            deprecation_reason: None,
+            deprecation_status: DeprecationStatus::Current,
         }
     }
 
@@ -614,16 +722,16 @@ impl EnumValue {
         self
     }
 
-    /// Set the deprecation reason for the enum value
+    /// Set the enum value to be deprecated with an optional reason.
     ///
     /// This overwrites the deprecation reason if any was previously set.
-    pub fn deprecated(mut self, reason: &str) -> EnumValue {
-        self.deprecation_reason = Some(reason.to_owned());
+    pub fn deprecated(mut self, reason: Option<&str>) -> Self {
+        self.deprecation_status = DeprecationStatus::Deprecated(reason.map(|s| s.to_owned()));
         self
     }
 }
 
-impl<'a> fmt::Debug for ScalarMeta<'a> {
+impl<'a, S: fmt::Debug> fmt::Debug for ScalarMeta<'a, S> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_struct("ScalarMeta")
             .field("name", &self.name)
@@ -632,7 +740,7 @@ impl<'a> fmt::Debug for ScalarMeta<'a> {
     }
 }
 
-impl<'a> fmt::Debug for EnumMeta<'a> {
+impl<'a, S: fmt::Debug> fmt::Debug for EnumMeta<'a, S> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_struct("EnumMeta")
             .field("name", &self.name)
@@ -642,7 +750,7 @@ impl<'a> fmt::Debug for EnumMeta<'a> {
     }
 }
 
-impl<'a> fmt::Debug for InputObjectMeta<'a> {
+impl<'a, S: fmt::Debug> fmt::Debug for InputObjectMeta<'a, S> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_struct("InputObjectMeta")
             .field("name", &self.name)
@@ -650,4 +758,48 @@ impl<'a> fmt::Debug for InputObjectMeta<'a> {
             .field("input_fields", &self.input_fields)
             .finish()
     }
+}
+
+fn try_parse_fn<S, T>(v: &InputValue<S>) -> bool
+where
+    T: FromInputValue<S>,
+    for<'b> &'b S: ScalarRefValue<'b>,
+{
+    <T as FromInputValue<S>>::from_input_value(v).is_some()
+}
+
+fn clean_docstring(multiline: &[&str]) -> Option<String> {
+    if multiline.is_empty() {
+        return None;
+    }
+    let trim_start = multiline
+        .iter()
+        .filter_map(|ln| ln.chars().position(|ch| !ch.is_whitespace()))
+        .min()
+        .unwrap_or(0);
+    Some(
+        multiline
+            .iter()
+            .enumerate()
+            .flat_map(|(line, ln)| {
+                let new_ln = if !ln
+                    .chars()
+                    .next()
+                    .map(|ch| ch.is_whitespace())
+                    .unwrap_or(false)
+                {
+                    ln.trim_end() // skip trimming the first line
+                } else if ln.len() >= trim_start {
+                    &ln[trim_start..].trim_end()
+                } else {
+                    ""
+                };
+                new_ln.chars().chain(
+                    ['\n']
+                        .iter()
+                        .take_while(move |_| line < multiline.len() - 1)
+                        .cloned(),
+                )
+            }).collect::<String>(),
+    )
 }

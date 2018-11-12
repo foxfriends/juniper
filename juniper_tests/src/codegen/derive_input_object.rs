@@ -1,24 +1,102 @@
 #[cfg(test)]
 use fnv::FnvHashMap;
 
-#[cfg(test)]
-use juniper::{self, FromInputValue, GraphQLType, InputValue};
+use juniper::{self, FromInputValue, GraphQLType, InputValue, ToInputValue};
+
+use juniper::DefaultScalarValue;
 
 #[derive(GraphQLInputObject, Debug, PartialEq)]
-#[graphql(name = "MyInput", description = "input descr")]
+#[graphql(
+    name = "MyInput",
+    description = "input descr",
+    scalar = "DefaultScalarValue"
+)]
 struct Input {
     regular_field: String,
-    #[graphql(name = "haha", default = "33", description = "haha descr")] c: i32,
+    #[graphql(name = "haha", default = "33", description = "haha descr")]
+    c: i32,
 
-    #[graphql(default)] other: Option<bool>,
+    #[graphql(default)]
+    other: Option<bool>,
+}
+
+/// Object comment.
+#[derive(GraphQLInputObject, Debug, PartialEq)]
+struct DocComment {
+    /// Field comment.
+    regular_field: bool,
+}
+
+/// Doc 1.
+/// Doc 2.
+///
+/// Doc 4.
+#[derive(GraphQLInputObject, Debug, PartialEq)]
+struct MultiDocComment {
+    /// Field 1.
+    /// Field 2.
+    regular_field: bool,
+}
+
+/// This is not used as the description.
+#[derive(GraphQLInputObject, Debug, PartialEq)]
+#[graphql(description = "obj override")]
+struct OverrideDocComment {
+    /// This is not used as the description.
+    #[graphql(description = "field override")]
+    regular_field: bool,
+}
+
+#[derive(Debug, PartialEq)]
+struct Fake;
+
+impl<'a> FromInputValue for &'a Fake {
+    fn from_input_value(_v: &InputValue) -> Option<&'a Fake> {
+        None
+    }
+}
+
+impl<'a> ToInputValue for &'a Fake {
+    fn to_input_value(&self) -> InputValue {
+        InputValue::scalar("this is fake")
+    }
+}
+
+impl<'a> GraphQLType for &'a Fake {
+    type Context = ();
+    type TypeInfo = ();
+
+    fn name(_: &()) -> Option<&'static str> {
+        None
+    }
+    fn meta<'r>(_: &(), registry: &mut juniper::Registry<'r>) -> juniper::meta::MetaType<'r>
+    where
+        DefaultScalarValue: 'r,
+    {
+        let meta = registry.build_enum_type::<&'a Fake>(
+            &(),
+            &[juniper::meta::EnumValue {
+                name: "fake".to_string(),
+                description: None,
+                deprecation_status: juniper::meta::DeprecationStatus::Current,
+            }],
+        );
+        meta.into_meta()
+    }
+}
+
+#[derive(GraphQLInputObject, Debug, PartialEq)]
+#[graphql(scalar = "DefaultScalarValue")]
+struct WithLifetime<'a> {
+    regular_field: &'a Fake,
 }
 
 #[test]
 fn test_derived_input_object() {
-    assert_eq!(Input::name(&()), Some("MyInput"));
+    assert_eq!(<Input as GraphQLType>::name(&()), Some("MyInput"));
 
     // Validate meta info.
-    let mut registry = juniper::Registry::new(FnvHashMap::default());
+    let mut registry: juniper::Registry = juniper::Registry::new(FnvHashMap::default());
     let meta = Input::meta(&(), &mut registry);
     assert_eq!(meta.name(), Some("MyInput"));
     assert_eq!(meta.description(), Some(&"input descr".to_string()));
@@ -56,4 +134,28 @@ fn test_derived_input_object() {
             other: Some(true),
         }
     );
+}
+
+#[test]
+fn test_doc_comment() {
+    let mut registry: juniper::Registry = juniper::Registry::new(FnvHashMap::default());
+    let meta = DocComment::meta(&(), &mut registry);
+    assert_eq!(meta.description(), Some(&"Object comment.".to_string()));
+}
+
+#[test]
+fn test_multi_doc_comment() {
+    let mut registry: juniper::Registry = juniper::Registry::new(FnvHashMap::default());
+    let meta = MultiDocComment::meta(&(), &mut registry);
+    assert_eq!(
+        meta.description(),
+        Some(&"Doc 1. Doc 2.\nDoc 4.".to_string())
+    );
+}
+
+#[test]
+fn test_doc_comment_override() {
+    let mut registry: juniper::Registry = juniper::Registry::new(FnvHashMap::default());
+    let meta = OverrideDocComment::meta(&(), &mut registry);
+    assert_eq!(meta.description(), Some(&"obj override".to_string()));
 }

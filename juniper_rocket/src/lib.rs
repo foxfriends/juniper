@@ -45,22 +45,90 @@ extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
 
-use std::io::{Cursor, Read};
 use std::error::Error;
+use std::io::{Cursor, Read};
 
-use rocket::Request;
-use rocket::request::{FormItems, FromForm};
 use rocket::data::{FromData, Outcome as FromDataOutcome};
-use rocket::response::{content, Responder, Response};
 use rocket::http::{ContentType, Status};
+use rocket::request::{FormItems, FromForm};
+use rocket::response::{content, Responder, Response};
 use rocket::Data;
 use rocket::Outcome::{Failure, Forward, Success};
+use rocket::Request;
 
-use juniper::InputValue;
 use juniper::http;
+use juniper::InputValue;
 
+use juniper::serde::Deserialize;
+use juniper::DefaultScalarValue;
+use juniper::FieldError;
 use juniper::GraphQLType;
 use juniper::RootNode;
+use juniper::ScalarRefValue;
+use juniper::ScalarValue;
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(untagged)]
+#[serde(bound = "InputValue<S>: Deserialize<'de>")]
+enum GraphQLBatchRequest<S = DefaultScalarValue>
+where
+    S: ScalarValue,
+{
+    Single(http::GraphQLRequest<S>),
+    Batch(Vec<http::GraphQLRequest<S>>),
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum GraphQLBatchResponse<'a, S = DefaultScalarValue>
+where
+    S: ScalarValue,
+{
+    Single(http::GraphQLResponse<'a, S>),
+    Batch(Vec<http::GraphQLResponse<'a, S>>),
+}
+
+impl<S> GraphQLBatchRequest<S>
+where
+    S: ScalarValue,
+    for<'b> &'b S: ScalarRefValue<'b>,
+{
+    pub fn execute<'a, CtxT, QueryT, MutationT>(
+        &'a self,
+        root_node: &'a RootNode<QueryT, MutationT, S>,
+        context: &CtxT,
+    ) -> GraphQLBatchResponse<'a, S>
+    where
+        QueryT: GraphQLType<S, Context = CtxT>,
+        MutationT: GraphQLType<S, Context = CtxT>,
+    {
+        match self {
+            &GraphQLBatchRequest::Single(ref request) => {
+                GraphQLBatchResponse::Single(request.execute(root_node, context))
+            }
+            &GraphQLBatchRequest::Batch(ref requests) => GraphQLBatchResponse::Batch(
+                requests
+                    .iter()
+                    .map(|request| request.execute(root_node, context))
+                    .collect(),
+            ),
+        }
+    }
+}
+
+impl<'a, S> GraphQLBatchResponse<'a, S>
+where
+    S: ScalarValue,
+{
+    fn is_ok(&self) -> bool {
+        match self {
+            &GraphQLBatchResponse::Single(ref response) => response.is_ok(),
+            &GraphQLBatchResponse::Batch(ref responses) => responses
+                .iter()
+                .fold(true, |ok, response| ok && response.is_ok()),
+        }
+    }
+}
 
 #[derive(Debug, Deserialize, PartialEq)]
 #[serde(untagged)]
@@ -110,26 +178,32 @@ impl<'a> GraphQLBatchResponse<'a> {
 /// automatically from both GET and POST routes by implementing the `FromForm`
 /// and `FromData` traits.
 #[derive(Debug, PartialEq)]
-pub struct GraphQLRequest(GraphQLBatchRequest);
+pub struct GraphQLRequest<S = DefaultScalarValue>(GraphQLBatchRequest<S>)
+where
+    S: ScalarValue;
 
 /// Simple wrapper around the result of executing a GraphQL query
-pub struct GraphQLResponse(Status, String);
+pub struct GraphQLResponse(pub Status, pub String);
 
 /// Generate an HTML page containing GraphiQL
 pub fn graphiql_source(graphql_endpoint_url: &str) -> content::Html<String> {
     content::Html(juniper::graphiql::graphiql_source(graphql_endpoint_url))
 }
 
-impl GraphQLRequest {
+impl<S> GraphQLRequest<S>
+where
+    S: ScalarValue,
+    for<'b> &'b S: ScalarRefValue<'b>,
+{
     /// Execute an incoming GraphQL query
     pub fn execute<CtxT, QueryT, MutationT>(
         &self,
-        root_node: &RootNode<QueryT, MutationT>,
+        root_node: &RootNode<QueryT, MutationT, S>,
         context: &CtxT,
     ) -> GraphQLResponse
     where
-        QueryT: GraphQLType<Context = CtxT>,
-        MutationT: GraphQLType<Context = CtxT>,
+        QueryT: GraphQLType<S, Context = CtxT>,
+        MutationT: GraphQLType<S, Context = CtxT>,
     {
         let response = self.0.execute(root_node, context);
         let status = if response.is_ok() {
@@ -143,7 +217,64 @@ impl GraphQLRequest {
     }
 }
 
-impl<'f> FromForm<'f> for GraphQLRequest {
+impl GraphQLResponse {
+    /// Constructs an error response outside of the normal execution flow
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #![feature(plugin)]
+    /// # #![plugin(rocket_codegen)]
+    /// #
+    /// # extern crate juniper;
+    /// # extern crate juniper_rocket;
+    /// # extern crate rocket;
+    /// #
+    /// # use rocket::http::Cookies;
+    /// # use rocket::response::content;
+    /// # use rocket::State;
+    /// #
+    /// # use juniper::tests::model::Database;
+    /// # use juniper::{EmptyMutation, FieldError, RootNode, Value};
+    /// #
+    /// # type Schema = RootNode<'static, Database, EmptyMutation<Database>>;
+    /// #
+    /// #[get("/graphql?<request>")]
+    /// fn get_graphql_handler(
+    ///     mut cookies: Cookies,
+    ///     context: State<Database>,
+    ///     request: juniper_rocket::GraphQLRequest,
+    ///     schema: State<Schema>,
+    /// ) -> juniper_rocket::GraphQLResponse {
+    ///     if cookies.get_private("user_id").is_none() {
+    ///         let err = FieldError::new("User is not logged in", Value::null());
+    ///         return juniper_rocket::GraphQLResponse::error(err);
+    ///     }
+    ///
+    ///     request.execute(&schema, &context)
+    /// }
+    /// ```
+    pub fn error(error: FieldError) -> Self {
+        let response = http::GraphQLResponse::error(error);
+        let json = serde_json::to_string(&response).unwrap();
+        GraphQLResponse(Status::BadRequest, json)
+    }
+
+    /// Constructs a custom response outside of the normal execution flow
+    ///
+    /// This is intended for highly customized integrations and should only
+    /// be used as a last resort. For normal juniper use, use the response
+    /// from GraphQLRequest::execute(..).
+    pub fn custom(status: Status, response: serde_json::Value) -> Self {
+        let json = serde_json::to_string(&response).unwrap();
+        GraphQLResponse(status, json)
+    }
+}
+
+impl<'f, S> FromForm<'f> for GraphQLRequest<S>
+where
+    S: ScalarValue,
+{
     type Error = String;
 
     fn from_form(form_items: &mut FormItems<'f>, strict: bool) -> Result<Self, String> {
@@ -167,8 +298,9 @@ impl<'f> FromForm<'f> for GraphQLRequest {
                 }
                 "operation_name" => {
                     if operation_name.is_some() {
-                        return Err("Operation name parameter must not occur more than once"
-                            .to_owned());
+                        return Err(
+                            "Operation name parameter must not occur more than once".to_owned()
+                        );
                     } else {
                         match value.url_decode() {
                             Ok(v) => operation_name = Some(v),
@@ -185,8 +317,10 @@ impl<'f> FromForm<'f> for GraphQLRequest {
                             Ok(v) => decoded = v,
                             Err(e) => return Err(e.description().to_string()),
                         }
-                        variables = Some(serde_json::from_str::<InputValue>(&decoded)
-                            .map_err(|err| err.description().to_owned())?);
+                        variables = Some(
+                            serde_json::from_str::<InputValue<_>>(&decoded)
+                                .map_err(|err| err.description().to_owned())?,
+                        );
                     }
                 }
                 _ => {
@@ -198,18 +332,19 @@ impl<'f> FromForm<'f> for GraphQLRequest {
         }
 
         if let Some(query) = query {
-            Ok(GraphQLRequest(GraphQLBatchRequest::Single(http::GraphQLRequest::new(
-                query,
-                operation_name,
-                variables,
-            ))))
+            Ok(GraphQLRequest(GraphQLBatchRequest::Single(
+                http::GraphQLRequest::new(query, operation_name, variables),
+            )))
         } else {
             Err("Query parameter missing".to_owned())
         }
     }
 }
 
-impl FromData for GraphQLRequest {
+impl<S> FromData for GraphQLRequest<S>
+where
+    S: ScalarValue,
+{
     type Error = String;
 
     fn from_data(request: &Request, data: Data) -> FromDataOutcome<Self, Self::Error> {
@@ -244,13 +379,13 @@ impl<'r> Responder<'r> for GraphQLResponse {
 #[cfg(test)]
 mod fromform_tests {
     use super::*;
-    use std::str;
     use juniper::InputValue;
     use rocket::request::{FormItems, FromForm};
+    use std::str;
 
     fn check_error(input: &str, error: &str, strict: bool) {
         let mut items = FormItems::from(input);
-        let result = GraphQLRequest::from_form(&mut items, strict);
+        let result: Result<GraphQLRequest, _> = GraphQLRequest::from_form(&mut items, strict);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), error);
     }
@@ -340,7 +475,7 @@ mod fromform_tests {
     fn test_url_decode() {
         let form_string = "query=%25foo%20bar+baz%26%3F&operation_name=test";
         let mut items = FormItems::from(form_string);
-        let result = GraphQLRequest::from_form(&mut items, false);
+        let result: Result<GraphQLRequest, _> = GraphQLRequest::from_form(&mut items, false);
         assert!(result.is_ok());
         let expected = GraphQLRequest(GraphQLBatchRequest::Single(http::GraphQLRequest::new(
             "%foo bar baz&?".to_string(),
@@ -355,15 +490,15 @@ mod fromform_tests {
 mod tests {
 
     use rocket;
-    use rocket::Rocket;
     use rocket::http::ContentType;
-    use rocket::State;
     use rocket::local::{Client, LocalRequest};
+    use rocket::Rocket;
+    use rocket::State;
 
-    use juniper::RootNode;
-    use juniper::tests::model::Database;
     use juniper::http::tests as http_tests;
+    use juniper::tests::model::Database;
     use juniper::EmptyMutation;
+    use juniper::RootNode;
 
     type Schema = RootNode<'static, Database, EmptyMutation<Database>>;
 
@@ -416,8 +551,7 @@ mod tests {
             .manage(Schema::new(
                 Database::new(),
                 EmptyMutation::<Database>::new(),
-            ))
-            .mount("/", routes![post_graphql_handler, get_graphql_handler])
+            )).mount("/", routes![post_graphql_handler, get_graphql_handler])
     }
 
     fn make_test_response<'r>(request: &LocalRequest<'r>) -> http_tests::TestResponse {

@@ -1,9 +1,7 @@
-use indexmap::IndexMap;
-
 use executor::Variables;
 use schema::model::RootNode;
 use types::scalars::EmptyMutation;
-use value::Value;
+use value::{Value, Object, DefaultScalarValue, ParseScalarValue, ParseScalarResult};
 
 struct DefaultName(i32);
 struct OtherOrder(i32);
@@ -21,45 +19,62 @@ Syntax to validate:
 
 */
 
-graphql_scalar!(DefaultName {
+graphql_scalar!(DefaultName where Scalar = <S> {
     resolve(&self) -> Value {
-        Value::int(self.0)
+        Value::scalar(self.0)
     }
 
     from_input_value(v: &InputValue) -> Option<DefaultName> {
-        v.as_int_value().map(|i| DefaultName(i))
+        v.as_scalar_value::<i32>().map(|i| DefaultName(*i))
+    }
+
+    from_str<'a>(value: ScalarToken<'a>) -> ParseScalarResult<'a, S> {
+        <i32 as ParseScalarValue<S>>::from_str(value)
     }
 });
 
 graphql_scalar!(OtherOrder {
-    from_input_value(v: &InputValue) -> Option<OtherOrder> {
-        v.as_int_value().map(|i| OtherOrder(i))
+    resolve(&self) -> Value {
+        Value::scalar(self.0)
     }
 
-    resolve(&self) -> Value {
-        Value::int(self.0)
+    from_input_value(v: &InputValue) -> Option<OtherOrder> {
+        v.as_scalar_value::<i32>().map(|i| OtherOrder(*i))
+    }
+
+
+    from_str<'a>(value: ScalarToken<'a>) -> ParseScalarResult<'a, DefaultScalarValue> {
+        <i32 as ParseScalarValue>::from_str(value)
     }
 });
 
-graphql_scalar!(Named as "ANamedScalar" {
+graphql_scalar!(Named as "ANamedScalar" where Scalar = DefaultScalarValue {
     resolve(&self) -> Value {
-        Value::int(self.0)
+        Value::scalar(self.0)
     }
 
     from_input_value(v: &InputValue) -> Option<Named> {
-        v.as_int_value().map(|i| Named(i))
+        v.as_scalar_value::<i32>().map(|i| Named(*i))
+    }
+
+    from_str<'a>(value: ScalarToken<'a>) -> ParseScalarResult<'a, DefaultScalarValue> {
+        <i32 as ParseScalarValue>::from_str(value)
     }
 });
 
-graphql_scalar!(ScalarDescription {
+graphql_scalar!(ScalarDescription  {
     description: "A sample scalar, represented as an integer"
 
     resolve(&self) -> Value {
-        Value::int(self.0)
+        Value::scalar(self.0)
     }
 
     from_input_value(v: &InputValue) -> Option<ScalarDescription> {
-        v.as_int_value().map(|i| ScalarDescription(i))
+        v.as_scalar_value::<i32>().map(|i| ScalarDescription(*i))
+    }
+
+    from_str<'a>(value: ScalarToken<'a>) -> ParseScalarResult<'a> {
+        <i32 as ParseScalarValue>::from_str(value)
     }
 });
 
@@ -72,7 +87,7 @@ graphql_object!(Root: () |&self| {
 
 fn run_type_info_query<F>(doc: &str, f: F)
 where
-    F: Fn(&IndexMap<String, Value>) -> (),
+    F: Fn(&Object<DefaultScalarValue>) -> (),
 {
     let schema = RootNode::new(Root {}, EmptyMutation::<()>::new());
 
@@ -81,17 +96,36 @@ where
 
     assert_eq!(errs, []);
 
-    println!("Result: {:?}", result);
+    println!("Result: {:#?}", result);
 
     let type_info = result
         .as_object_value()
         .expect("Result is not an object")
-        .get("__type")
+        .get_field_value("__type")
         .expect("__type field missing")
         .as_object_value()
         .expect("__type field not an object value");
 
     f(type_info);
+}
+
+#[test]
+fn path_in_resolve_return_type() {
+    struct ResolvePath(i32);
+
+    graphql_scalar!(ResolvePath {
+        resolve(&self) -> self::Value {
+            Value::scalar(self.0)
+        }
+
+        from_input_value(v: &InputValue) -> Option<ResolvePath> {
+            v.as_scalar_value::<i32>().map(|i| ResolvePath(*i))
+        }
+
+        from_str<'a>(value: ScalarToken<'a>) -> ParseScalarResult<'a> {
+            <i32 as ParseScalarValue>::from_str(value)
+        }
+    });
 }
 
 #[test]
@@ -106,8 +140,8 @@ fn default_name_introspection() {
     "#;
 
     run_type_info_query(doc, |type_info| {
-        assert_eq!(type_info.get("name"), Some(&Value::string("DefaultName")));
-        assert_eq!(type_info.get("description"), Some(&Value::null()));
+        assert_eq!(type_info.get_field_value("name"), Some(&Value::scalar("DefaultName")));
+        assert_eq!(type_info.get_field_value("description"), Some(&Value::null()));
     });
 }
 
@@ -123,8 +157,8 @@ fn other_order_introspection() {
     "#;
 
     run_type_info_query(doc, |type_info| {
-        assert_eq!(type_info.get("name"), Some(&Value::string("OtherOrder")));
-        assert_eq!(type_info.get("description"), Some(&Value::null()));
+        assert_eq!(type_info.get_field_value("name"), Some(&Value::scalar("OtherOrder")));
+        assert_eq!(type_info.get_field_value("description"), Some(&Value::null()));
     });
 }
 
@@ -140,8 +174,8 @@ fn named_introspection() {
     "#;
 
     run_type_info_query(doc, |type_info| {
-        assert_eq!(type_info.get("name"), Some(&Value::string("ANamedScalar")));
-        assert_eq!(type_info.get("description"), Some(&Value::null()));
+        assert_eq!(type_info.get_field_value("name"), Some(&Value::scalar("ANamedScalar")));
+        assert_eq!(type_info.get_field_value("description"), Some(&Value::null()));
     });
 }
 
@@ -158,12 +192,12 @@ fn scalar_description_introspection() {
 
     run_type_info_query(doc, |type_info| {
         assert_eq!(
-            type_info.get("name"),
-            Some(&Value::string("ScalarDescription"))
+            type_info.get_field_value("name"),
+            Some(&Value::scalar("ScalarDescription"))
         );
         assert_eq!(
-            type_info.get("description"),
-            Some(&Value::string("A sample scalar, represented as an integer"))
+            type_info.get_field_value("description"),
+            Some(&Value::scalar("A sample scalar, represented as an integer"))
         );
     });
 }

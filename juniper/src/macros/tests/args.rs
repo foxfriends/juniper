@@ -1,7 +1,7 @@
 use executor::Variables;
 use schema::model::RootNode;
 use types::scalars::EmptyMutation;
-use value::Value;
+use value::{DefaultScalarValue, Value};
 
 struct Root;
 
@@ -20,7 +20,6 @@ Syntax to validate:
 */
 
 #[derive(GraphQLInputObject)]
-#[graphql(_internal)]
 struct Point {
     x: i32,
 }
@@ -48,6 +47,13 @@ graphql_object!(Root: () |&self| {
     field multi_args_descr_trailing_comma(
         arg1: i32 as "The first arg",
         arg2: i32 as "The second arg",
+    ) -> i32 { 0 }
+
+    field attr_arg_descr(#[doc = "The arg"] arg: i32) -> i32 { 0 }
+    field attr_arg_descr_collapse(
+        #[doc = "The arg"]
+        #[doc = "and more details"]
+        arg: i32,
     ) -> i32 { 0 }
 
     field arg_with_default(arg = 123: i32) -> i32 { 0 }
@@ -78,7 +84,7 @@ graphql_object!(Root: () |&self| {
 
 fn run_args_info_query<F>(field_name: &str, f: F)
 where
-    F: Fn(&Vec<Value>) -> (),
+    F: Fn(&Vec<Value<DefaultScalarValue>>) -> (),
 {
     let doc = r#"
     {
@@ -107,18 +113,18 @@ where
 
     assert_eq!(errs, []);
 
-    println!("Result: {:?}", result);
+    println!("Result: {:#?}", result);
 
     let type_info = result
         .as_object_value()
         .expect("Result is not an object")
-        .get("__type")
+        .get_field_value("__type")
         .expect("__type field missing")
         .as_object_value()
         .expect("__type field not an object value");
 
     let fields = type_info
-        .get("fields")
+        .get_field_value("fields")
         .expect("fields field missing")
         .as_list_value()
         .expect("fields not a list");
@@ -128,25 +134,25 @@ where
         .filter(|f| {
             f.as_object_value()
                 .expect("Field not an object")
-                .get("name")
+                .get_field_value("name")
                 .expect("name field missing from field")
-                .as_string_value()
-                .expect("name is not a string") == field_name
-        })
-        .next()
+                .as_scalar_value::<String>()
+                .expect("name is not a string")
+                == field_name
+        }).next()
         .expect("Field not found")
         .as_object_value()
         .expect("Field is not an object");
 
-    println!("Field: {:?}", field);
+    println!("Field: {:#?}", field);
 
     let args = field
-        .get("args")
+        .get_field_value("args")
         .expect("args missing from field")
         .as_list_value()
         .expect("args is not a list");
 
-    println!("Args: {:?}", args);
+    println!("Args: {:#?}", args);
 
     f(args);
 }
@@ -173,7 +179,7 @@ fn introspect_field_exec_arg_and_more() {
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg")),
+                    ("name", Value::scalar("arg")),
                     ("description", Value::null()),
                     ("defaultValue", Value::null()),
                     (
@@ -184,15 +190,15 @@ fn introspect_field_exec_arg_and_more() {
                                 (
                                     "ofType",
                                     Value::object(
-                                        vec![("name", Value::string("Int"))].into_iter().collect(),
+                                        vec![("name", Value::scalar("Int"))].into_iter().collect(),
                                     ),
                                 ),
                             ].into_iter()
-                                .collect(),
+                            .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
     });
@@ -206,7 +212,7 @@ fn introspect_field_single_arg() {
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg")),
+                    ("name", Value::scalar("arg")),
                     ("description", Value::null()),
                     ("defaultValue", Value::null()),
                     (
@@ -217,15 +223,15 @@ fn introspect_field_single_arg() {
                                 (
                                     "ofType",
                                     Value::object(
-                                        vec![("name", Value::string("Int"))].into_iter().collect(),
+                                        vec![("name", Value::scalar("Int"))].into_iter().collect(),
                                     ),
                                 ),
                             ].into_iter()
-                                .collect(),
+                            .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
     });
@@ -239,7 +245,7 @@ fn introspect_field_multi_args() {
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg1")),
+                    ("name", Value::scalar("arg1")),
                     ("description", Value::null()),
                     ("defaultValue", Value::null()),
                     (
@@ -250,22 +256,22 @@ fn introspect_field_multi_args() {
                                 (
                                     "ofType",
                                     Value::object(
-                                        vec![("name", Value::string("Int"))].into_iter().collect(),
+                                        vec![("name", Value::scalar("Int"))].into_iter().collect(),
                                     ),
                                 ),
                             ].into_iter()
-                                .collect(),
+                            .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
 
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg2")),
+                    ("name", Value::scalar("arg2")),
                     ("description", Value::null()),
                     ("defaultValue", Value::null()),
                     (
@@ -276,15 +282,15 @@ fn introspect_field_multi_args() {
                                 (
                                     "ofType",
                                     Value::object(
-                                        vec![("name", Value::string("Int"))].into_iter().collect(),
+                                        vec![("name", Value::scalar("Int"))].into_iter().collect(),
                                     ),
                                 ),
                             ].into_iter()
-                                .collect(),
+                            .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
     });
@@ -298,7 +304,7 @@ fn introspect_field_multi_args_trailing_comma() {
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg1")),
+                    ("name", Value::scalar("arg1")),
                     ("description", Value::null()),
                     ("defaultValue", Value::null()),
                     (
@@ -309,22 +315,22 @@ fn introspect_field_multi_args_trailing_comma() {
                                 (
                                     "ofType",
                                     Value::object(
-                                        vec![("name", Value::string("Int"))].into_iter().collect(),
+                                        vec![("name", Value::scalar("Int"))].into_iter().collect(),
                                     ),
                                 ),
                             ].into_iter()
-                                .collect(),
+                            .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
 
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg2")),
+                    ("name", Value::scalar("arg2")),
                     ("description", Value::null()),
                     ("defaultValue", Value::null()),
                     (
@@ -335,15 +341,15 @@ fn introspect_field_multi_args_trailing_comma() {
                                 (
                                     "ofType",
                                     Value::object(
-                                        vec![("name", Value::string("Int"))].into_iter().collect(),
+                                        vec![("name", Value::scalar("Int"))].into_iter().collect(),
                                     ),
                                 ),
                             ].into_iter()
-                                .collect(),
+                            .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
     });
@@ -357,8 +363,8 @@ fn introspect_field_single_arg_descr() {
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg")),
-                    ("description", Value::string("The arg")),
+                    ("name", Value::scalar("arg")),
+                    ("description", Value::scalar("The arg")),
                     ("defaultValue", Value::null()),
                     (
                         "type",
@@ -368,15 +374,15 @@ fn introspect_field_single_arg_descr() {
                                 (
                                     "ofType",
                                     Value::object(
-                                        vec![("name", Value::string("Int"))].into_iter().collect(),
+                                        vec![("name", Value::scalar("Int"))].into_iter().collect(),
                                     ),
                                 ),
                             ].into_iter()
-                                .collect(),
+                            .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
     });
@@ -390,8 +396,8 @@ fn introspect_field_multi_args_descr() {
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg1")),
-                    ("description", Value::string("The first arg")),
+                    ("name", Value::scalar("arg1")),
+                    ("description", Value::scalar("The first arg")),
                     ("defaultValue", Value::null()),
                     (
                         "type",
@@ -401,23 +407,23 @@ fn introspect_field_multi_args_descr() {
                                 (
                                     "ofType",
                                     Value::object(
-                                        vec![("name", Value::string("Int"))].into_iter().collect(),
+                                        vec![("name", Value::scalar("Int"))].into_iter().collect(),
                                     ),
                                 ),
                             ].into_iter()
-                                .collect(),
+                            .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
 
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg2")),
-                    ("description", Value::string("The second arg")),
+                    ("name", Value::scalar("arg2")),
+                    ("description", Value::scalar("The second arg")),
                     ("defaultValue", Value::null()),
                     (
                         "type",
@@ -427,15 +433,15 @@ fn introspect_field_multi_args_descr() {
                                 (
                                     "ofType",
                                     Value::object(
-                                        vec![("name", Value::string("Int"))].into_iter().collect(),
+                                        vec![("name", Value::scalar("Int"))].into_iter().collect(),
                                     ),
                                 ),
                             ].into_iter()
-                                .collect(),
+                            .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
     });
@@ -449,8 +455,8 @@ fn introspect_field_multi_args_descr_trailing_comma() {
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg1")),
-                    ("description", Value::string("The first arg")),
+                    ("name", Value::scalar("arg1")),
+                    ("description", Value::scalar("The first arg")),
                     ("defaultValue", Value::null()),
                     (
                         "type",
@@ -460,23 +466,23 @@ fn introspect_field_multi_args_descr_trailing_comma() {
                                 (
                                     "ofType",
                                     Value::object(
-                                        vec![("name", Value::string("Int"))].into_iter().collect(),
+                                        vec![("name", Value::scalar("Int"))].into_iter().collect(),
                                     ),
                                 ),
                             ].into_iter()
-                                .collect(),
+                            .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
 
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg2")),
-                    ("description", Value::string("The second arg")),
+                    ("name", Value::scalar("arg2")),
+                    ("description", Value::scalar("The second arg")),
                     ("defaultValue", Value::null()),
                     (
                         "type",
@@ -486,15 +492,81 @@ fn introspect_field_multi_args_descr_trailing_comma() {
                                 (
                                     "ofType",
                                     Value::object(
-                                        vec![("name", Value::string("Int"))].into_iter().collect(),
+                                        vec![("name", Value::scalar("Int"))].into_iter().collect(),
                                     ),
                                 ),
                             ].into_iter()
-                                .collect(),
+                            .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
+            ))
+        );
+    });
+}
+
+#[test]
+fn introspect_field_attr_arg_descr() {
+    run_args_info_query("attrArgDescr", |args| {
+        assert_eq!(args.len(), 1);
+
+        assert!(
+            args.contains(&Value::object(
+                vec![
+                    ("name", Value::scalar("arg")),
+                    ("description", Value::scalar("The arg")),
+                    ("defaultValue", Value::null()),
+                    (
+                        "type",
+                        Value::object(
+                            vec![
+                                ("name", Value::null()),
+                                (
+                                    "ofType",
+                                    Value::object(
+                                        vec![("name", Value::scalar("Int"))].into_iter().collect(),
+                                    ),
+                                ),
+                            ].into_iter()
+                            .collect(),
+                        ),
+                    ),
+                ].into_iter()
+                .collect(),
+            ))
+        );
+    });
+}
+
+#[test]
+fn introspect_field_attr_arg_descr_collapse() {
+    run_args_info_query("attrArgDescrCollapse", |args| {
+        assert_eq!(args.len(), 1);
+
+        assert!(
+            args.contains(&Value::object(
+                vec![
+                    ("name", Value::scalar("arg")),
+                    ("description", Value::scalar("The arg\nand more details")),
+                    ("defaultValue", Value::null()),
+                    (
+                        "type",
+                        Value::object(
+                            vec![
+                                ("name", Value::null()),
+                                (
+                                    "ofType",
+                                    Value::object(
+                                        vec![("name", Value::scalar("Int"))].into_iter().collect(),
+                                    ),
+                                ),
+                            ].into_iter()
+                            .collect(),
+                        ),
+                    ),
+                ].into_iter()
+                .collect(),
             ))
         );
     });
@@ -508,19 +580,19 @@ fn introspect_field_arg_with_default() {
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg")),
+                    ("name", Value::scalar("arg")),
                     ("description", Value::null()),
-                    ("defaultValue", Value::string("123")),
+                    ("defaultValue", Value::scalar("123")),
                     (
                         "type",
                         Value::object(
-                            vec![("name", Value::string("Int")), ("ofType", Value::null())]
+                            vec![("name", Value::scalar("Int")), ("ofType", Value::null())]
                                 .into_iter()
                                 .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
     });
@@ -534,38 +606,38 @@ fn introspect_field_multi_args_with_default() {
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg1")),
+                    ("name", Value::scalar("arg1")),
                     ("description", Value::null()),
-                    ("defaultValue", Value::string("123")),
+                    ("defaultValue", Value::scalar("123")),
                     (
                         "type",
                         Value::object(
-                            vec![("name", Value::string("Int")), ("ofType", Value::null())]
+                            vec![("name", Value::scalar("Int")), ("ofType", Value::null())]
                                 .into_iter()
                                 .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
 
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg2")),
+                    ("name", Value::scalar("arg2")),
                     ("description", Value::null()),
-                    ("defaultValue", Value::string("456")),
+                    ("defaultValue", Value::scalar("456")),
                     (
                         "type",
                         Value::object(
-                            vec![("name", Value::string("Int")), ("ofType", Value::null())]
+                            vec![("name", Value::scalar("Int")), ("ofType", Value::null())]
                                 .into_iter()
                                 .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
     });
@@ -579,38 +651,38 @@ fn introspect_field_multi_args_with_default_trailing_comma() {
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg1")),
+                    ("name", Value::scalar("arg1")),
                     ("description", Value::null()),
-                    ("defaultValue", Value::string("123")),
+                    ("defaultValue", Value::scalar("123")),
                     (
                         "type",
                         Value::object(
-                            vec![("name", Value::string("Int")), ("ofType", Value::null())]
+                            vec![("name", Value::scalar("Int")), ("ofType", Value::null())]
                                 .into_iter()
                                 .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
 
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg2")),
+                    ("name", Value::scalar("arg2")),
                     ("description", Value::null()),
-                    ("defaultValue", Value::string("456")),
+                    ("defaultValue", Value::scalar("456")),
                     (
                         "type",
                         Value::object(
-                            vec![("name", Value::string("Int")), ("ofType", Value::null())]
+                            vec![("name", Value::scalar("Int")), ("ofType", Value::null())]
                                 .into_iter()
                                 .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
     });
@@ -624,19 +696,19 @@ fn introspect_field_arg_with_default_descr() {
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg")),
-                    ("description", Value::string("The arg")),
-                    ("defaultValue", Value::string("123")),
+                    ("name", Value::scalar("arg")),
+                    ("description", Value::scalar("The arg")),
+                    ("defaultValue", Value::scalar("123")),
                     (
                         "type",
                         Value::object(
-                            vec![("name", Value::string("Int")), ("ofType", Value::null())]
+                            vec![("name", Value::scalar("Int")), ("ofType", Value::null())]
                                 .into_iter()
                                 .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
     });
@@ -650,38 +722,38 @@ fn introspect_field_multi_args_with_default_descr() {
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg1")),
-                    ("description", Value::string("The first arg")),
-                    ("defaultValue", Value::string("123")),
+                    ("name", Value::scalar("arg1")),
+                    ("description", Value::scalar("The first arg")),
+                    ("defaultValue", Value::scalar("123")),
                     (
                         "type",
                         Value::object(
-                            vec![("name", Value::string("Int")), ("ofType", Value::null())]
+                            vec![("name", Value::scalar("Int")), ("ofType", Value::null())]
                                 .into_iter()
                                 .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
 
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg2")),
-                    ("description", Value::string("The second arg")),
-                    ("defaultValue", Value::string("456")),
+                    ("name", Value::scalar("arg2")),
+                    ("description", Value::scalar("The second arg")),
+                    ("defaultValue", Value::scalar("456")),
                     (
                         "type",
                         Value::object(
-                            vec![("name", Value::string("Int")), ("ofType", Value::null())]
+                            vec![("name", Value::scalar("Int")), ("ofType", Value::null())]
                                 .into_iter()
                                 .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
     });
@@ -695,38 +767,38 @@ fn introspect_field_multi_args_with_default_trailing_comma_descr() {
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg1")),
-                    ("description", Value::string("The first arg")),
-                    ("defaultValue", Value::string("123")),
+                    ("name", Value::scalar("arg1")),
+                    ("description", Value::scalar("The first arg")),
+                    ("defaultValue", Value::scalar("123")),
                     (
                         "type",
                         Value::object(
-                            vec![("name", Value::string("Int")), ("ofType", Value::null())]
+                            vec![("name", Value::scalar("Int")), ("ofType", Value::null())]
                                 .into_iter()
                                 .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
 
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg2")),
-                    ("description", Value::string("The second arg")),
-                    ("defaultValue", Value::string("456")),
+                    ("name", Value::scalar("arg2")),
+                    ("description", Value::scalar("The second arg")),
+                    ("defaultValue", Value::scalar("456")),
                     (
                         "type",
                         Value::object(
-                            vec![("name", Value::string("Int")), ("ofType", Value::null())]
+                            vec![("name", Value::scalar("Int")), ("ofType", Value::null())]
                                 .into_iter()
                                 .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
     });
@@ -740,41 +812,41 @@ fn introspect_field_args_with_complex_default() {
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg1")),
-                    ("description", Value::string("A string default argument")),
-                    ("defaultValue", Value::string(r#""test""#)),
+                    ("name", Value::scalar("arg1")),
+                    ("description", Value::scalar("A string default argument")),
+                    ("defaultValue", Value::scalar(r#""test""#)),
                     (
                         "type",
                         Value::object(
-                            vec![("name", Value::string("String")), ("ofType", Value::null())]
+                            vec![("name", Value::scalar("String")), ("ofType", Value::null())]
                                 .into_iter()
                                 .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
 
         assert!(
             args.contains(&Value::object(
                 vec![
-                    ("name", Value::string("arg2")),
+                    ("name", Value::scalar("arg2")),
                     (
                         "description",
-                        Value::string("An input object default argument"),
+                        Value::scalar("An input object default argument"),
                     ),
-                    ("defaultValue", Value::string(r#"{x: 1}"#)),
+                    ("defaultValue", Value::scalar(r#"{x: 1}"#)),
                     (
                         "type",
                         Value::object(
-                            vec![("name", Value::string("Point")), ("ofType", Value::null())]
+                            vec![("name", Value::scalar("Point")), ("ofType", Value::null())]
                                 .into_iter()
                                 .collect(),
                         ),
                     ),
                 ].into_iter()
-                    .collect(),
+                .collect(),
             ))
         );
     });
