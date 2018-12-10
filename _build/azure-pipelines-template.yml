@@ -11,9 +11,9 @@ jobs:
       nightly:
         rustup_toolchain: nightly
       minimum_supported_version_plus_one:
-        rustup_toolchain: 1.23.0
+        rustup_toolchain: 1.29.0
       minimum_supported_version:
-        rustup_toolchain: 1.22.0
+        rustup_toolchain: 1.28.0
   steps:
   - ${{ if ne(parameters.name, 'Windows') }}:
     # Linux and macOS.
@@ -34,8 +34,23 @@ jobs:
         rustc -Vv
         cargo -V
     displayName: Query rust and cargo versions
-  - script: cargo install -f cargo-make
-    displayName: Install cargo-make
+  - ${{ if eq(parameters.name, 'Linux') }}:
+    # Linux.
+    - script: _build/cargo-make.sh "0.15.3" "x86_64-unknown-linux-musl"
+      displayName: Install cargo-make binary
+  - ${{ if eq(parameters.name, 'macOS') }}:
+    # Mac.
+    - script: _build/cargo-make.sh "0.15.3" "x86_64-apple-darwin"
+      displayName: Install cargo-make binary
+  - ${{ if eq(parameters.name, 'Windows') }}:
+    # Windows.
+    - script: powershell -executionpolicy bypass -file _build/cargo-make.ps1 -version "0.15.3" -target "x86_64-pc-windows-msvc"
+      displayName: Install cargo-make binary
   - script: cargo make workspace-ci-flow --no-workspace
     env: { CARGO_MAKE_RUN_CODECOV: true }
     displayName: Build and run tests
+  - script: |
+      rustup target add wasm32-unknown-unknown
+      cargo check --target wasm32-unknown-unknown --package juniper --package juniper_codegen
+    displayName: Check WebAssembly target
+    condition: eq(variables['rustup_toolchain'], 'stable')
