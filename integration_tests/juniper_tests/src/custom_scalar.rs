@@ -9,7 +9,7 @@ use juniper::{execute, EmptyMutation, Object, RootNode, Variables};
 use juniper::{InputValue, ParseScalarResult, ScalarValue, Value};
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, ScalarValue)]
+#[derive(Debug, Clone, PartialEq, GraphQLScalarValue)]
 enum MyScalarValue {
     Int(i32),
     Long(i64),
@@ -220,7 +220,8 @@ fn querying_long_variable() {
         vec![(
             "test".to_owned(),
             InputValue::Scalar(MyScalarValue::Long((::std::i32::MAX as i64) + 42)),
-        )].into_iter()
+        )]
+        .into_iter()
         .collect(),
         |result| {
             assert_eq!(

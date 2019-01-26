@@ -57,7 +57,7 @@ pub struct DirectiveType<'a, S> {
     pub arguments: Vec<Argument<'a, S>>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, GraphQLEnum)]
+#[derive(Clone, PartialEq, Eq, Debug, GraphQLEnumInternal)]
 #[graphql(name = "__DirectiveLocation")]
 pub enum DirectiveLocation {
     Query,
@@ -302,7 +302,8 @@ impl<'a, S> SchemaType<'a, S> {
                         ..
                     }) => interface_names.iter().any(|iname| iname == name),
                     _ => false,
-                }).collect(),
+                })
+                .collect(),
             _ => panic!("Can't retrieve possible types from non-abstract meta type"),
         }
     }

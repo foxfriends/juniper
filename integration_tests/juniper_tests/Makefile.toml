@@ -1,0 +1,15 @@
+
+[tasks.build-verbose]
+args = ["build", "--verbose"]
+
+[tasks.test-verbose]
+args = ["test", "--verbose"]
+
+[tasks.release]
+disabled = true
+
+[tasks.release-patch]
+disabled = true
+
+[tasks.release-dry-run]
+disabled = true
