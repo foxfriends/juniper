@@ -1,9 +1,13 @@
-use ast::{FromInputValue, InputValue, Selection, ToInputValue};
-use schema::meta::MetaType;
-use value::{ScalarRefValue, ScalarValue, Value};
+use crate::{
+    ast::{FromInputValue, InputValue, Selection, ToInputValue},
+    schema::meta::MetaType,
+    value::{ScalarRefValue, ScalarValue, Value},
+};
 
-use executor::{Executor, Registry};
-use types::base::GraphQLType;
+use crate::{
+    executor::{Executor, Registry},
+    types::base::GraphQLType,
+};
 
 impl<S, T, CtxT> GraphQLType<S> for Option<T>
 where

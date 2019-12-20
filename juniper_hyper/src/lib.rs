@@ -1,28 +1,20 @@
-#[macro_use]
-extern crate futures;
-extern crate hyper;
-extern crate juniper;
-#[macro_use]
-extern crate serde_derive;
+#![doc(html_root_url = "https://docs.rs/juniper_hyper/0.2.0")]
+
 #[cfg(test)]
 extern crate reqwest;
-extern crate serde_json;
-extern crate tokio;
-extern crate tokio_threadpool;
-extern crate url;
 
 use futures::future::Either;
-use hyper::header::HeaderValue;
-use hyper::rt::Stream;
-use hyper::{header, Body, Method, Request, Response, StatusCode};
-use juniper::http::GraphQLRequest as JuniperGraphQLRequest;
-use juniper::serde::Deserialize;
-use juniper::{DefaultScalarValue, GraphQLType, InputValue, RootNode, ScalarRefValue, ScalarValue};
+use hyper::{
+    header::{self, HeaderValue},
+    rt::Stream,
+    Body, Method, Request, Response, StatusCode,
+};
+use juniper::{
+    http::GraphQLRequest as JuniperGraphQLRequest, serde::Deserialize, DefaultScalarValue,
+    GraphQLType, InputValue, RootNode, ScalarRefValue, ScalarValue,
+};
 use serde_json::error::Error as SerdeError;
-use std::error::Error;
-use std::fmt;
-use std::string::FromUtf8Error;
-use std::sync::Arc;
+use std::{error::Error, fmt, string::FromUtf8Error, sync::Arc};
 use tokio::prelude::*;
 use url::form_urlencoded;
 
@@ -47,9 +39,11 @@ where
                     .uri()
                     .query()
                     .map(|q| gql_request_from_get(q).map(GraphQLRequest::Single))
-                    .unwrap_or(Err(GraphQLRequestError::Invalid(
-                        "'query' parameter is missing".to_string(),
-                    ))),
+                    .unwrap_or_else(|| {
+                        Err(GraphQLRequestError::Invalid(
+                            "'query' parameter is missing".to_string(),
+                        ))
+                    }),
             )
             .and_then(move |gql_req| {
                 execute_request(root_node, context, gql_req).map_err(|_| {
@@ -204,7 +198,7 @@ fn new_html_response(code: StatusCode) -> Response<Body> {
     resp
 }
 
-#[derive(Deserialize)]
+#[derive(serde_derive::Deserialize)]
 #[serde(untagged)]
 #[serde(bound = "InputValue<S>: Deserialize<'de>")]
 enum GraphQLRequest<S = DefaultScalarValue>
@@ -232,7 +226,7 @@ where
     {
         match self {
             GraphQLRequest::Single(request) => Either::A(future::poll_fn(move || {
-                let res = try_ready!(tokio_threadpool::blocking(
+                let res = futures::try_ready!(tokio_threadpool::blocking(
                     || request.execute(&root_node, &context)
                 ));
                 let is_ok = res.is_ok();
@@ -246,7 +240,7 @@ where
                         let root_node = root_node.clone();
                         let context = context.clone();
                         future::poll_fn(move || {
-                            let res = try_ready!(tokio_threadpool::blocking(
+                            let res = futures::try_ready!(tokio_threadpool::blocking(
                                 || request.execute(&root_node, &context)
                             ));
                             let is_ok = res.is_ok();
@@ -300,7 +294,7 @@ impl Error for GraphQLRequestError {
         }
     }
 
-    fn cause(&self) -> Option<&Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         match *self {
             GraphQLRequestError::BodyHyper(ref err) => Some(err),
             GraphQLRequestError::BodyUtf8(ref err) => Some(err),
@@ -313,19 +307,18 @@ impl Error for GraphQLRequestError {
 
 #[cfg(test)]
 mod tests {
-    use futures::{future, future::Either, Future};
-    use hyper::service::service_fn;
-    use hyper::Method;
-    use hyper::{Body, Response, Server, StatusCode};
-    use juniper::http::tests as http_tests;
-    use juniper::tests::model::Database;
-    use juniper::EmptyMutation;
-    use juniper::RootNode;
-    use reqwest;
-    use reqwest::Response as ReqwestResponse;
-    use std::sync::Arc;
-    use std::thread;
-    use std::time;
+    use futures::{
+        future::{self, Either},
+        Future,
+    };
+    use hyper::{service::service_fn, Body, Method, Response, Server, StatusCode};
+    use juniper::{
+        http::tests as http_tests,
+        tests::{model::Database, schema::Query},
+        EmptyMutation, RootNode,
+    };
+    use reqwest::{self, Response as ReqwestResponse};
+    use std::{sync::Arc, thread, time};
     use tokio::runtime::Runtime;
 
     struct TestHyperIntegration;
@@ -370,7 +363,7 @@ mod tests {
         let addr = ([127, 0, 0, 1], 3001).into();
 
         let db = Arc::new(Database::new());
-        let root_node = Arc::new(RootNode::new(db.clone(), EmptyMutation::<Database>::new()));
+        let root_node = Arc::new(RootNode::new(Query, EmptyMutation::<Database>::new()));
 
         let new_service = move || {
             let root_node = root_node.clone();

@@ -6,7 +6,7 @@
 [![Build Status](https://dev.azure.com/graphql-rust/GraphQL%20Rust/_apis/build/status/graphql-rust.juniper)](https://dev.azure.com/graphql-rust/GraphQL%20Rust/_build/latest?definitionId=1)
 [![codecov](https://codecov.io/gh/graphql-rust/juniper/branch/master/graph/badge.svg)](https://codecov.io/gh/graphql-rust/juniper)
 [![Crates.io](https://img.shields.io/crates/v/juniper.svg?maxAge=2592000)](https://crates.io/crates/juniper)
-[![Gitter chat](https://badges.gitter.im/juniper-graphql/gitter.png)](https://gitter.im/juniper-graphql)
+[![Gitter chat](https://badges.gitter.im/juniper-graphql/gitter.svg)](https://gitter.im/juniper-graphql)
 
 ---
 
@@ -24,7 +24,7 @@ embedded [Graphiql][graphiql] and [GraphQL Playground][playground] for easy debu
 
 - [Cargo crate](https://crates.io/crates/juniper)
 - [API Reference][docsrs]
-- [Book][book]: Guides and Examples
+- [Book][book]: Guides and Examples ([current][book] | [master][book_master])
 
 The book is also available for the master branch and older versions published after 0.11.1. See the [book index][book_index].
 
@@ -50,7 +50,7 @@ see the [hyper][hyper_examples], [rocket][rocket_examples], [iron][iron_examples
 Juniper supports the full GraphQL query language according to the
 [specification][graphql_spec], including interfaces, unions, schema
 introspection, and validations.
-It does not, however, support the schema language.
+It does not, however, support the schema language. Consider using [juniper-from-schema][] for generating code from a schema file.
 
 As an exception to other GraphQL libraries for other languages, Juniper builds
 non-null types by default. A field of type `Vec<Episode>` will be converted into
@@ -97,6 +97,7 @@ Juniper has not reached 1.0 yet, thus some API instability should be expected.
 [hyper]: https://hyper.rs
 [rocket]: https://rocket.rs
 [book]: https://graphql-rust.github.io/juniper/current
+[book_master]: https://graphql-rust.github.io/juniper/master
 [book_index]: https://graphql-rust.github.io/juniper
 [book_quickstart]: https://graphql-rust.github.io/juniper/current/quickstart.html
 [docsrs]: https://docs.rs/juniper
@@ -105,3 +106,4 @@ Juniper has not reached 1.0 yet, thus some API instability should be expected.
 [uuid]: https://crates.io/crates/uuid
 [url]: https://crates.io/crates/url
 [chrono]: https://crates.io/crates/chrono
+[juniper-from-schema]: https://github.com/davidpdrsn/juniper-from-schema

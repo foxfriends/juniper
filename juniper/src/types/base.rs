@@ -1,42 +1,48 @@
 use indexmap::IndexMap;
 
-use ast::{Directive, FromInputValue, InputValue, Selection};
-use executor::Variables;
-use value::{DefaultScalarValue, Object, ScalarRefValue, ScalarValue, Value};
+use juniper_codegen::GraphQLEnumInternal as GraphQLEnum;
 
-use executor::{ExecutionResult, Executor, Registry};
-use parser::Spanning;
-use schema::meta::{Argument, MetaType};
+use crate::{
+    ast::{Directive, FromInputValue, InputValue, Selection},
+    executor::Variables,
+    value::{DefaultScalarValue, Object, ScalarRefValue, ScalarValue, Value},
+};
+
+use crate::{
+    executor::{ExecutionResult, Executor, Registry},
+    parser::Spanning,
+    schema::meta::{Argument, MetaType},
+};
 
 /// GraphQL type kind
 ///
-/// The GraphQL specification defines a number of type kinds - the meta type
+/// The GraphQL specification defines a number of type kinds - the meta type\
 /// of a type.
-#[derive(Clone, Eq, PartialEq, Debug, GraphQLEnumInternal)]
+#[derive(Clone, Eq, PartialEq, Debug, GraphQLEnum)]
 #[graphql(name = "__TypeKind")]
 pub enum TypeKind {
     /// ## Scalar types
     ///
-    /// Scalar types appear as the leaf nodes of GraphQL queries. Strings,
-    /// numbers, and booleans are the built in types, and while it's possible
+    /// Scalar types appear as the leaf nodes of GraphQL queries. Strings,\
+    /// numbers, and booleans are the built in types, and while it's possible\
     /// to define your own, it's relatively uncommon.
     Scalar,
 
     /// ## Object types
     ///
-    /// The most common type to be implemented by users. Objects have fields
+    /// The most common type to be implemented by users. Objects have fields\
     /// and can implement interfaces.
     Object,
 
     /// ## Interface types
     ///
-    /// Interface types are used to represent overlapping fields between
+    /// Interface types are used to represent overlapping fields between\
     /// multiple types, and can be queried for their concrete type.
     Interface,
 
     /// ## Union types
     ///
-    /// Unions are similar to interfaces but can not contain any fields on
+    /// Unions are similar to interfaces but can not contain any fields on\
     /// their own.
     Union,
 
@@ -53,14 +59,14 @@ pub enum TypeKind {
 
     /// ## List types
     ///
-    /// Represent lists of other types. This library provides implementations
-    /// for vectors and slices, but other Rust types can be extended to serve
+    /// Represent lists of other types. This library provides implementations\
+    /// for vectors and slices, but other Rust types can be extended to serve\
     /// as GraphQL lists.
     List,
 
     /// ## Non-null types
     ///
-    /// In GraphQL, nullable types are the default. By putting a `!` after a
+    /// In GraphQL, nullable types are the default. By putting a `!` after a\
     /// type, it becomes non-nullable.
     #[graphql(name = "NON_NULL")]
     NonNull,
@@ -97,7 +103,7 @@ where
             }
         }
 
-        Arguments { args: args }
+        Arguments { args }
     }
 
     /// Get and convert an argument into the desired type.
@@ -477,16 +483,14 @@ where
                     } else if let Err(e) = sub_result {
                         sub_exec.push_error_at(e, start_pos.clone());
                     }
-                } else {
-                    if !resolve_selection_set_into(
-                        instance,
-                        info,
-                        &fragment.selection_set[..],
-                        &sub_exec,
-                        result,
-                    ) {
-                        return false;
-                    }
+                } else if !resolve_selection_set_into(
+                    instance,
+                    info,
+                    &fragment.selection_set[..],
+                    &sub_exec,
+                    result,
+                ) {
+                    return false;
                 }
             }
         }

@@ -38,20 +38,7 @@ Check the LICENSE file for details.
 
 #![deny(missing_docs)]
 #![deny(warnings)]
-
-#[macro_use]
-extern crate failure;
-extern crate futures;
-extern crate juniper;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde;
-extern crate serde_json;
-extern crate tokio_threadpool;
-extern crate warp;
-
-#[cfg(test)]
-extern crate percent_encoding;
+#![doc(html_root_url = "https://docs.rs/juniper_warp/0.2.0")]
 
 use futures::{future::poll_fn, Future};
 use juniper::{DefaultScalarValue, InputValue, ScalarRefValue, ScalarValue};
@@ -59,7 +46,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use warp::{filters::BoxedFilter, Filter};
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, serde_derive::Deserialize, PartialEq)]
 #[serde(untagged)]
 #[serde(bound = "InputValue<S>: Deserialize<'de>")]
 enum GraphQLBatchRequest<S = DefaultScalarValue>
@@ -98,7 +85,7 @@ where
     }
 }
 
-#[derive(Serialize)]
+#[derive(serde_derive::Serialize)]
 #[serde(untagged)]
 enum GraphQLBatchResponse<'a, S = DefaultScalarValue>
 where
@@ -132,7 +119,6 @@ where
 ///
 /// ```
 /// # extern crate juniper_warp;
-/// # #[macro_use]
 /// # extern crate juniper;
 /// # extern crate warp;
 /// #
@@ -149,13 +135,18 @@ where
 ///
 /// struct QueryRoot;
 ///
-/// graphql_object! (QueryRoot: ExampleContext |&self| {
-///     field say_hello(&executor) -> String {
-///         let context = executor.context();
-///
-///         format!("good morning {}, the app state is {:?}", context.1, context.0)
+/// #[juniper::object(
+///    Context = ExampleContext
+/// )]
+/// impl QueryRoot {
+///     fn say_hello(context: &ExampleContext) -> String {
+///         format!(
+///             "good morning {}, the app state is {:?}",
+///             context.1,
+///             context.0
+///         )
 ///     }
-/// });
+/// }
 ///
 /// let schema = RootNode::new(QueryRoot, EmptyMutation::new());
 ///
@@ -226,7 +217,7 @@ where
 
                     let graphql_request = juniper::http::GraphQLRequest::new(
                         request.remove("query").ok_or_else(|| {
-                            format_err!("Missing GraphQL query string in query parameters")
+                            failure::format_err!("Missing GraphQL query string in query parameters")
                         })?,
                         request.get("operation_name").map(|s| s.to_owned()),
                         variables,
@@ -266,7 +257,7 @@ fn build_response(
 }
 
 type Response =
-    Box<Future<Item = warp::http::Response<Vec<u8>>, Error = warp::reject::Rejection> + Send>;
+    Box<dyn Future<Item = warp::http::Response<Vec<u8>>, Error = warp::reject::Rejection> + Send>;
 
 /// Create a filter that replies with an HTML page containing GraphiQL. This does not handle routing, so you can mount it on any endpoint.
 ///
@@ -317,8 +308,7 @@ fn playground_response(graphql_endpoint_url: &'static str) -> warp::http::Respon
 #[cfg(test)]
 mod tests {
     use super::*;
-    use warp::http;
-    use warp::test::request;
+    use warp::{http, test::request};
 
     #[test]
     fn graphiql_response_does_not_panic() {
@@ -399,12 +389,14 @@ mod tests {
 
     #[test]
     fn graphql_handler_works_json_post() {
-        use juniper::tests::model::Database;
-        use juniper::{EmptyMutation, RootNode};
+        use juniper::{
+            tests::{model::Database, schema::Query},
+            EmptyMutation, RootNode,
+        };
 
-        type Schema = juniper::RootNode<'static, Database, EmptyMutation<Database>>;
+        type Schema = juniper::RootNode<'static, Query, EmptyMutation<Database>>;
 
-        let schema: Schema = RootNode::new(Database::new(), EmptyMutation::<Database>::new());
+        let schema: Schema = RootNode::new(Query, EmptyMutation::<Database>::new());
 
         let state = warp::any().map(move || Database::new());
         let filter = warp::path("graphql2").and(make_graphql_filter(schema, state.boxed()));
@@ -430,12 +422,14 @@ mod tests {
 
     #[test]
     fn batch_requests_work() {
-        use juniper::tests::model::Database;
-        use juniper::{EmptyMutation, RootNode};
+        use juniper::{
+            tests::{model::Database, schema::Query},
+            EmptyMutation, RootNode,
+        };
 
-        type Schema = juniper::RootNode<'static, Database, EmptyMutation<Database>>;
+        type Schema = juniper::RootNode<'static, Query, EmptyMutation<Database>>;
 
-        let schema: Schema = RootNode::new(Database::new(), EmptyMutation::<Database>::new());
+        let schema: Schema = RootNode::new(Query, EmptyMutation::<Database>::new());
 
         let state = warp::any().map(move || Database::new());
         let filter = warp::path("graphql2").and(make_graphql_filter(schema, state.boxed()));
@@ -476,17 +470,17 @@ mod tests {
 #[cfg(test)]
 mod tests_http_harness {
     use super::*;
-    use juniper::http::tests::{run_http_test_suite, HTTPIntegration, TestResponse};
-    use juniper::tests::model::Database;
-    use juniper::EmptyMutation;
-    use juniper::RootNode;
-    use warp;
-    use warp::Filter;
+    use juniper::{
+        http::tests::{run_http_test_suite, HTTPIntegration, TestResponse},
+        tests::{model::Database, schema::Query},
+        EmptyMutation, RootNode,
+    };
+    use warp::{self, Filter};
 
-    type Schema = juniper::RootNode<'static, Database, EmptyMutation<Database>>;
+    type Schema = juniper::RootNode<'static, Query, EmptyMutation<Database>>;
 
     fn warp_server() -> warp::filters::BoxedFilter<(warp::http::Response<Vec<u8>>,)> {
-        let schema: Schema = RootNode::new(Database::new(), EmptyMutation::<Database>::new());
+        let schema: Schema = RootNode::new(Query, EmptyMutation::<Database>::new());
 
         let state = warp::any().map(move || Database::new());
         let filter = warp::filters::path::end().and(make_graphql_filter(schema, state.boxed()));

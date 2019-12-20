@@ -1,8 +1,8 @@
 #[cfg(test)]
 use fnv::FnvHashMap;
-use juniper::DefaultScalarValue;
 #[cfg(test)]
 use juniper::Object;
+use juniper::{DefaultScalarValue, GraphQLObject};
 
 #[cfg(test)]
 use juniper::{self, execute, EmptyMutation, GraphQLType, RootNode, Value, Variables};
@@ -11,20 +11,20 @@ use juniper::{self, execute, EmptyMutation, GraphQLType, RootNode, Value, Variab
 #[graphql(
     name = "MyObj",
     description = "obj descr",
-    scalar = "DefaultScalarValue"
+    scalar = DefaultScalarValue
 )]
 struct Obj {
     regular_field: bool,
     #[graphql(
         name = "renamedField",
         description = "descr",
-        deprecation = "field descr"
+        deprecated = "field deprecation"
     )]
     c: i32,
 }
 
 #[derive(GraphQLObject, Debug, PartialEq)]
-#[graphql(scalar = "DefaultScalarValue")]
+#[graphql(scalar = DefaultScalarValue)]
 struct Nested {
     obj: Obj,
 }
@@ -38,7 +38,7 @@ struct DocComment {
     regular_field: bool,
 }
 
-/// Doc 1.
+/// Doc 1.\
 /// Doc 2.
 ///
 /// Doc 4.
@@ -74,56 +74,57 @@ struct Context;
 impl juniper::Context for Context {}
 
 #[derive(GraphQLObject, Debug)]
-#[graphql(Context = "Context")]
+#[graphql(Context = Context)]
 struct WithCustomContext {
     a: bool,
 }
 
-graphql_object!(Query: () |&self| {
-    field obj() -> Obj {
-      Obj{
-        regular_field: true,
-        c: 22,
-      }
-    }
-
-    field nested() -> Nested {
-        Nested{
-            obj: Obj{
-                regular_field: false,
-                c: 333,
-            }
+#[juniper::object]
+impl Query {
+    fn obj() -> Obj {
+        Obj {
+            regular_field: true,
+            c: 22,
         }
     }
 
-    field doc() -> DocComment {
-      DocComment{
-        regular_field: true,
-      }
+    fn nested() -> Nested {
+        Nested {
+            obj: Obj {
+                regular_field: false,
+                c: 333,
+            },
+        }
     }
 
-    field multi_doc() -> MultiDocComment {
-      MultiDocComment{
-        regular_field: true,
-      }
+    fn doc() -> DocComment {
+        DocComment {
+            regular_field: true,
+        }
     }
 
-    field override_doc() -> OverrideDocComment {
-      OverrideDocComment{
-        regular_field: true,
-      }
+    fn multi_doc() -> MultiDocComment {
+        MultiDocComment {
+            regular_field: true,
+        }
     }
 
-    field skipped_field_obj() -> SkippedFieldObj {
-        SkippedFieldObj{
+    fn override_doc() -> OverrideDocComment {
+        OverrideDocComment {
+            regular_field: true,
+        }
+    }
+
+    fn skipped_field_obj() -> SkippedFieldObj {
+        SkippedFieldObj {
             regular_field: false,
             skipped: 42,
         }
     }
-});
+}
 
 #[test]
-fn test_doc_comment() {
+fn test_doc_comment_simple() {
     let mut registry: juniper::Registry = juniper::Registry::new(FnvHashMap::default());
     let meta = DocComment::meta(&(), &mut registry);
     assert_eq!(meta.description(), Some(&"Object comment.".to_string()));
@@ -142,14 +143,14 @@ fn test_multi_doc_comment() {
     let meta = MultiDocComment::meta(&(), &mut registry);
     assert_eq!(
         meta.description(),
-        Some(&"Doc 1. Doc 2.\nDoc 4.".to_string())
+        Some(&"Doc 1. Doc 2.\n\nDoc 4.".to_string())
     );
 
     check_descriptions(
         "MultiDocComment",
-        &Value::scalar("Doc 1. Doc 2.\nDoc 4."),
+        &Value::scalar("Doc 1. Doc 2.\n\nDoc 4."),
         "regularField",
-        &Value::scalar("Field 1. Field 2."),
+        &Value::scalar("Field 1.\nField 2."),
     );
 }
 

@@ -1,14 +1,12 @@
-use std::borrow::Cow;
-use std::fmt;
-use std::hash::Hash;
-use std::slice;
-use std::vec;
+use std::{borrow::Cow, fmt, hash::Hash, slice, vec};
 
 use indexmap::IndexMap;
 
-use executor::Variables;
-use parser::Spanning;
-use value::{DefaultScalarValue, ScalarRefValue, ScalarValue};
+use crate::{
+    executor::Variables,
+    parser::Spanning,
+    value::{DefaultScalarValue, ScalarRefValue, ScalarValue},
+};
 
 /// A type literal in the syntax tree
 ///
@@ -118,6 +116,7 @@ pub struct Directive<'a, S> {
 pub enum OperationType {
     Query,
     Mutation,
+    Subscription,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -352,7 +351,7 @@ where
     where
         &'a S: Into<Option<&'a i32>>,
     {
-        self.as_scalar_value().map(|i| *i)
+        self.as_scalar_value().cloned()
     }
 
     /// View the underlying float value, if present.
@@ -361,7 +360,7 @@ where
     where
         &'a S: Into<Option<&'a f64>>,
     {
-        self.as_scalar_value().map(|f| *f)
+        self.as_scalar_value().cloned()
     }
 
     /// View the underlying string value, if present.
@@ -434,7 +433,7 @@ where
 
     /// Compare equality with another `InputValue` ignoring any source position information.
     pub fn unlocated_eq(&self, other: &Self) -> bool {
-        use InputValue::*;
+        use crate::InputValue::*;
 
         match (self, other) {
             (&Null, &Null) => true,
@@ -533,7 +532,7 @@ impl<'a, S> VariableDefinitions<'a, S> {
 #[cfg(test)]
 mod tests {
     use super::InputValue;
-    use parser::Spanning;
+    use crate::parser::Spanning;
 
     #[test]
     fn test_input_value_fmt() {

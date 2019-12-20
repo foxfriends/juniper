@@ -1,14 +1,19 @@
 use indexmap::IndexMap;
-use serde::ser::SerializeMap;
-use serde::{de, ser};
+use serde::{
+    de,
+    ser::{self, SerializeMap},
+};
+use serde_derive::Serialize;
 
 use std::fmt;
 
-use ast::InputValue;
-use executor::ExecutionError;
-use parser::{ParseError, SourcePosition, Spanning};
-use validation::RuleError;
-use {GraphQLError, Object, ScalarValue, Value};
+use crate::{
+    ast::InputValue,
+    executor::ExecutionError,
+    parser::{ParseError, SourcePosition, Spanning},
+    validation::RuleError,
+    GraphQLError, Object, ScalarValue, Value,
+};
 
 #[derive(Serialize)]
 struct SerializeHelper {
@@ -63,6 +68,10 @@ impl<'a> ser::Serialize for GraphQLError<'a> {
             .serialize(serializer),
             GraphQLError::UnknownOperationName => [SerializeHelper {
                 message: "Unknown operation",
+            }]
+            .serialize(serializer),
+            GraphQLError::IsSubscription => [SerializeHelper {
+                message: "Expected query, got subscription",
             }]
             .serialize(serializer),
         }
@@ -130,7 +139,7 @@ where
                 self.0.visit_i64(value).map(InputValue::Scalar)
             }
 
-            serde_if_integer128! {
+            serde::serde_if_integer128! {
                 fn visit_i128<E>(self, value: i128) -> Result<InputValue<S>, E>
                 where
                     E: de::Error,
@@ -167,7 +176,7 @@ where
                 self.0.visit_u64(value).map(InputValue::Scalar)
             }
 
-            serde_if_integer128! {
+            serde::serde_if_integer128! {
                 fn visit_u128<E>(self, value: u128) -> Result<InputValue<S>, E>
                 where
                     E: de::Error,
@@ -397,11 +406,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::{ExecutionError, GraphQLError};
-    use ast::InputValue;
-    use serde_json::from_str;
-    use serde_json::to_string;
-    use value::{DefaultScalarValue, Object};
-    use {FieldError, Value};
+    use crate::{
+        ast::InputValue,
+        value::{DefaultScalarValue, Object},
+        FieldError, Value,
+    };
+    use serde_json::{from_str, to_string};
 
     #[test]
     fn int() {

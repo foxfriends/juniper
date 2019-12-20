@@ -23,7 +23,7 @@ the schema on an HTTP endpoint supporting both GET and POST requests:
 
 ```rust,no_run
 extern crate iron;
-# #[macro_use] extern crate juniper;
+# extern crate juniper;
 # extern crate juniper_iron;
 # use std::collections::HashMap;
 
@@ -37,27 +37,29 @@ use juniper::{Context, EmptyMutation};
 # struct QueryRoot;
 # struct Database { users: HashMap<String, User> }
 #
-# graphql_object!(User: Database |&self| {
-#     field id() -> FieldResult<&String> {
+# #[juniper::object( Context = Database )]
+# impl User {
+#     fn id(&self) -> FieldResult<&String> {
 #         Ok(&self.id)
 #     }
 #
-#     field name() -> FieldResult<&String> {
+#     fn name(&self) -> FieldResult<&String> {
 #         Ok(&self.name)
 #     }
 #
-#     field friends(&executor) -> FieldResult<Vec<&User>> {
+#     fn friends(context: &Database) -> FieldResult<Vec<&User>> {
 #         Ok(self.friend_ids.iter()
 #             .filter_map(|id| executor.context().users.get(id))
 #             .collect())
 #     }
-# });
+# }
 #
-# graphql_object!(QueryRoot: Database |&self| {
-#     field user(&executor, id: String) -> FieldResult<Option<&User>> {
+# #[juniper::object( Context = Database )]
+# impl QueryRoot {
+#     fn user(context: &Database, id: String) -> FieldResult<Option<&User>> {
 #         Ok(executor.context().users.get(&id))
 #     }
-# });
+# }
 
 // This function is executed for every request. Here, we would realistically
 // provide a database connection or similar. For this example, we'll be
@@ -101,36 +103,26 @@ supported.
 
 */
 
-#[macro_use]
-extern crate iron;
+#![doc(html_root_url = "https://docs.rs/juniper_iron/0.3.0")]
+
 #[cfg(test)]
 extern crate iron_test;
-extern crate juniper;
-extern crate serde_json;
-#[macro_use]
-extern crate serde_derive;
 #[cfg(test)]
 extern crate url;
-extern crate urlencoded;
 
-use iron::method;
-use iron::middleware::Handler;
-use iron::mime::Mime;
-use iron::prelude::*;
-use iron::status;
+use iron::{itry, method, middleware::Handler, mime::Mime, prelude::*, status};
 use urlencoded::{UrlDecodingError, UrlEncodedQuery};
 
-use std::error::Error;
-use std::fmt;
-use std::io::Read;
+use std::{error::Error, fmt, io::Read};
 
 use serde_json::error::Error as SerdeError;
 
-use juniper::http;
-use juniper::serde::Deserialize;
-use juniper::{DefaultScalarValue, GraphQLType, InputValue, RootNode, ScalarRefValue, ScalarValue};
+use juniper::{
+    http, serde::Deserialize, DefaultScalarValue, GraphQLType, InputValue, RootNode,
+    ScalarRefValue, ScalarValue,
+};
 
-#[derive(Deserialize)]
+#[derive(serde_derive::Deserialize)]
 #[serde(untagged)]
 #[serde(bound = "InputValue<S>: Deserialize<'de>")]
 enum GraphQLBatchRequest<S = DefaultScalarValue>
@@ -141,7 +133,7 @@ where
     Batch(Vec<http::GraphQLRequest<S>>),
 }
 
-#[derive(Serialize)]
+#[derive(serde_derive::Serialize)]
 #[serde(untagged)]
 enum GraphQLBatchResponse<'a, S = DefaultScalarValue>
 where
@@ -418,7 +410,7 @@ impl Error for GraphQLIronError {
         }
     }
 
-    fn cause(&self) -> Option<&Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         match *self {
             GraphQLIronError::Serde(ref err) => Some(err),
             GraphQLIronError::Url(ref err) => Some(err),
@@ -437,16 +429,20 @@ impl From<GraphQLIronError> for IronError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use iron::Url;
-    use iron::{Handler, Headers};
+    use iron::{Handler, Headers, Url};
     use iron_test::{request, response};
-    use url::percent_encoding::{utf8_percent_encode, DEFAULT_ENCODE_SET};
+    use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 
-    use juniper::http::tests as http_tests;
-    use juniper::tests::model::Database;
-    use juniper::EmptyMutation;
+    use juniper::{
+        http::tests as http_tests,
+        tests::{model::Database, schema::Query},
+        EmptyMutation,
+    };
 
     use super::GraphQLHandler;
+
+    /// https://url.spec.whatwg.org/#query-state
+    const QUERY_ENCODE_SET: &AsciiSet = &CONTROLS.add(b' ').add(b'"').add(b'#').add(b'<').add(b'>');
 
     // This is ugly but it works. `iron_test` just dumps the path/url in headers
     // and newer `hyper` doesn't allow unescaped "{" or "}".
@@ -461,7 +457,7 @@ mod tests {
         format!(
             "http://localhost:3000{}?{}",
             path,
-            utf8_percent_encode(url.query().unwrap_or(""), DEFAULT_ENCODE_SET)
+            utf8_percent_encode(url.query().unwrap_or(""), QUERY_ENCODE_SET)
         )
     }
 
@@ -528,10 +524,10 @@ mod tests {
         }
     }
 
-    fn make_handler() -> Box<Handler> {
+    fn make_handler() -> Box<dyn Handler> {
         Box::new(GraphQLHandler::new(
             context_factory,
-            Database::new(),
+            Query,
             EmptyMutation::<Database>::new(),
         ))
     }

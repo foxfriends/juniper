@@ -1,18 +1,21 @@
 use std::borrow::Cow;
 
-use ast::{
+use crate::ast::{
     Arguments, Definition, Directive, Document, Field, Fragment, FragmentSpread, InlineFragment,
     InputValue, Operation, OperationType, Selection, Type, VariableDefinition, VariableDefinitions,
 };
 
-use parser::value::parse_value_literal;
-use parser::{
-    Lexer, OptionParseResult, ParseError, ParseResult, Parser, Spanning, Token,
-    UnlocatedParseResult,
+use crate::{
+    parser::{
+        value::parse_value_literal, Lexer, OptionParseResult, ParseError, ParseResult, Parser,
+        Spanning, Token, UnlocatedParseResult,
+    },
+    schema::{
+        meta::{Argument, Field as MetaField},
+        model::SchemaType,
+    },
+    value::ScalarValue,
 };
-use schema::meta::{Argument, Field as MetaField};
-use schema::model::SchemaType;
-use value::ScalarValue;
 
 #[doc(hidden)]
 pub fn parse_document_source<'a, 'b, S>(
@@ -53,9 +56,12 @@ where
     S: ScalarValue,
 {
     match parser.peek().item {
-        Token::CurlyOpen | Token::Name("query") | Token::Name("mutation") => Ok(
-            Definition::Operation(parse_operation_definition(parser, schema)?),
-        ),
+        Token::CurlyOpen
+        | Token::Name("query")
+        | Token::Name("mutation")
+        | Token::Name("subscription") => Ok(Definition::Operation(parse_operation_definition(
+            parser, schema,
+        )?)),
         Token::Name("fragment") => Ok(Definition::Fragment(parse_fragment_definition(
             parser, schema,
         )?)),
@@ -92,6 +98,7 @@ where
         let op = match operation_type.item {
             OperationType::Query => Some(schema.concrete_query_type()),
             OperationType::Mutation => schema.concrete_mutation_type(),
+            OperationType::Subscription => schema.concrete_subscription_type(),
         };
         let fields = op.and_then(|m| m.fields(schema));
         let fields = fields.as_ref().map(|c| c as &[_]);
@@ -109,8 +116,8 @@ where
             &selection_set.end,
             Operation {
                 operation_type: operation_type.item,
-                name: name,
-                variable_definitions: variable_definitions,
+                name,
+                variable_definitions,
                 directives: directives.map(|s| s.item),
                 selection_set: selection_set.item,
             },
@@ -154,7 +161,7 @@ where
         &start_pos,
         &selection_set.end,
         Fragment {
-            name: name,
+            name,
             type_condition: type_cond,
             directives: directives.map(|s| s.item),
             selection_set: selection_set.item,
@@ -330,9 +337,9 @@ where
             .unwrap_or(&name.end)
             .clone(),
         Field {
-            alias: alias,
-            name: name,
-            arguments: arguments,
+            alias,
+            name,
+            arguments,
             directives: directives.map(|s| s.item),
             selection_set: selection_set.map(|s| s.item),
         },
@@ -391,6 +398,7 @@ fn parse_operation_type<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Operatio
     match parser.peek().item {
         Token::Name("query") => Ok(parser.next()?.map(|_| OperationType::Query)),
         Token::Name("mutation") => Ok(parser.next()?.map(|_| OperationType::Mutation)),
+        Token::Name("subscription") => Ok(parser.next()?.map(|_| OperationType::Subscription)),
         _ => Err(parser.next()?.map(ParseError::UnexpectedToken)),
     }
 }
@@ -449,8 +457,8 @@ where
         (
             Spanning::start_end(&start_pos, &var_name.end, var_name.item),
             VariableDefinition {
-                var_type: var_type,
-                default_value: default_value,
+                var_type,
+                default_value,
             },
         ),
     ))
@@ -498,10 +506,7 @@ where
     Ok(Spanning::start_end(
         &start_pos,
         &arguments.as_ref().map_or(&name.end, |s| &s.end).clone(),
-        Directive {
-            name: name,
-            arguments: arguments,
-        },
+        Directive { name, arguments },
     ))
 }
 

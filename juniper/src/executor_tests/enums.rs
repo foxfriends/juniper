@@ -1,13 +1,17 @@
-use ast::InputValue;
-use executor::Variables;
-use parser::SourcePosition;
-use schema::model::RootNode;
-use types::scalars::EmptyMutation;
-use validation::RuleError;
-use value::{DefaultScalarValue, Object, Value};
-use GraphQLError::ValidationError;
+use juniper_codegen::GraphQLEnumInternal as GraphQLEnum;
 
-#[derive(GraphQLEnumInternal, Debug)]
+use crate::{
+    ast::InputValue,
+    executor::Variables,
+    parser::SourcePosition,
+    schema::model::RootNode,
+    types::scalars::EmptyMutation,
+    validation::RuleError,
+    value::{DefaultScalarValue, Object, Value},
+    GraphQLError::ValidationError,
+};
+
+#[derive(GraphQLEnum, Debug)]
 enum Color {
     Red,
     Green,
@@ -15,15 +19,16 @@ enum Color {
 }
 struct TestType;
 
-graphql_object!(TestType: () |&self| {
-    field to_string(color: Color) -> String {
+#[crate::object_internal]
+impl TestType {
+    fn to_string(color: Color) -> String {
         format!("Color::{:?}", color)
     }
 
-    field a_color() -> Color {
+    fn a_color() -> Color {
         Color::Red
     }
-});
+}
 
 fn run_variable_query<F>(query: &str, vars: Variables<DefaultScalarValue>, f: F)
 where
@@ -31,7 +36,8 @@ where
 {
     let schema = RootNode::new(TestType, EmptyMutation::<()>::new());
 
-    let (result, errs) = ::execute(query, None, &schema, &vars, &()).expect("Execution failed");
+    let (result, errs) =
+        crate::execute(query, None, &schema, &vars, &()).expect("Execution failed");
 
     assert_eq!(errs, []);
 
@@ -76,7 +82,7 @@ fn does_not_accept_string_literals() {
     let query = r#"{ toString(color: "RED") }"#;
     let vars = vec![].into_iter().collect();
 
-    let error = ::execute(query, None, &schema, &vars, &()).unwrap_err();
+    let error = crate::execute(query, None, &schema, &vars, &()).unwrap_err();
 
     assert_eq!(
         error,
@@ -112,7 +118,7 @@ fn does_not_accept_incorrect_enum_name_in_variables() {
         .into_iter()
         .collect();
 
-    let error = ::execute(query, None, &schema, &vars, &()).unwrap_err();
+    let error = crate::execute(query, None, &schema, &vars, &()).unwrap_err();
 
     assert_eq!(
         error,
@@ -132,7 +138,7 @@ fn does_not_accept_incorrect_type_in_variables() {
         .into_iter()
         .collect();
 
-    let error = ::execute(query, None, &schema, &vars, &()).unwrap_err();
+    let error = crate::execute(query, None, &schema, &vars, &()).unwrap_err();
 
     assert_eq!(
         error,

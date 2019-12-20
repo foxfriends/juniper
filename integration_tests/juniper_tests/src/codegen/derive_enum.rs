@@ -4,7 +4,7 @@ use fnv::FnvHashMap;
 #[cfg(test)]
 use juniper::{self, DefaultScalarValue, FromInputValue, GraphQLType, InputValue, ToInputValue};
 
-#[derive(GraphQLEnum, Debug, PartialEq)]
+#[derive(juniper::GraphQLEnum, Debug, PartialEq)]
 #[graphql(name = "Some", description = "enum descr")]
 enum SomeEnum {
     Regular,
@@ -13,17 +13,17 @@ enum SomeEnum {
 }
 
 /// Enum doc.
-#[derive(GraphQLEnum)]
+#[derive(juniper::GraphQLEnum)]
 enum DocEnum {
     /// Variant doc.
     Foo,
 }
 
-/// Doc 1.
+/// Doc 1.\
 /// Doc 2.
 ///
 /// Doc 4.
-#[derive(GraphQLEnum, Debug, PartialEq)]
+#[derive(juniper::GraphQLEnum, Debug, PartialEq)]
 enum MultiDocEnum {
     /// Variant 1.
     /// Variant 2.
@@ -31,7 +31,7 @@ enum MultiDocEnum {
 }
 
 /// This is not used as the description.
-#[derive(GraphQLEnum, Debug, PartialEq)]
+#[derive(juniper::GraphQLEnum, Debug, PartialEq)]
 #[graphql(description = "enum override")]
 enum OverrideDocEnum {
     /// This is not used as the description.
@@ -85,7 +85,7 @@ fn test_multi_doc_comment() {
     let meta = MultiDocEnum::meta(&(), &mut registry);
     assert_eq!(
         meta.description(),
-        Some(&"Doc 1. Doc 2.\nDoc 4.".to_string())
+        Some(&"Doc 1. Doc 2.\n\nDoc 4.".to_string())
     );
 }
 

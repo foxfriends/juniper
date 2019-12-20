@@ -88,20 +88,14 @@ Juniper has not reached 1.0 yet, thus some API instability should be expected.
 [chrono]: https://crates.io/crates/chrono
 
 */
+#![doc(html_root_url = "https://docs.rs/juniper/0.14.2")]
 #![warn(missing_docs)]
 
 #[doc(hidden)]
-#[macro_use]
 pub extern crate serde;
-#[macro_use]
-extern crate serde_derive;
 
 #[cfg(any(test, feature = "expose-test-schema"))]
 extern crate serde_json;
-
-extern crate fnv;
-
-extern crate indexmap;
 
 #[cfg(any(test, feature = "chrono"))]
 extern crate chrono;
@@ -115,11 +109,15 @@ extern crate uuid;
 // Depend on juniper_codegen and re-export everything in it.
 // This allows users to just depend on juniper and get the derive
 // functionality automatically.
+pub use juniper_codegen::{
+    object, GraphQLEnum, GraphQLInputObject, GraphQLObject, GraphQLScalarValue, ScalarValue,
+};
+// Internal macros are not exported,
+// but declared at the root to make them easier to use.
 #[allow(unused_imports)]
-#[macro_use]
-extern crate juniper_codegen;
-#[doc(hidden)]
-pub use juniper_codegen::*;
+use juniper_codegen::{
+    object_internal, GraphQLEnumInternal, GraphQLInputObjectInternal, GraphQLScalarValueInternal,
+};
 
 #[macro_use]
 mod value;
@@ -138,7 +136,7 @@ mod validation;
 pub mod http;
 pub mod integrations;
 // TODO: remove this alias export in 0.10. (breaking change)
-pub use http::graphiql;
+pub use crate::http::graphiql;
 
 #[cfg(all(test, not(feature = "expose-test-schema")))]
 mod tests;
@@ -149,30 +147,33 @@ pub mod tests;
 mod executor_tests;
 
 // Needs to be public because macros use it.
-pub use util::to_camel_case;
+pub use crate::util::to_camel_case;
 
-use executor::execute_validated_query;
-use introspection::{INTROSPECTION_QUERY, INTROSPECTION_QUERY_WITHOUT_DESCRIPTIONS};
-use parser::{parse_document_source, ParseError, Spanning};
-use validation::{validate_input_values, visit_all_rules, ValidatorContext};
+use crate::{
+    executor::{execute_validated_query, get_operation},
+    introspection::{INTROSPECTION_QUERY, INTROSPECTION_QUERY_WITHOUT_DESCRIPTIONS},
+    parser::{parse_document_source, ParseError, Spanning},
+    validation::{validate_input_values, visit_all_rules, ValidatorContext},
+};
 
-pub use ast::{FromInputValue, InputValue, Selection, ToInputValue, Type};
-pub use executor::{
-    Applies, LookAheadArgument, LookAheadMethods, LookAheadSelection, LookAheadValue,
-};
-pub use executor::{
-    Context, ExecutionError, ExecutionResult, Executor, FieldError, FieldResult, FromContext,
-    IntoFieldError, IntoResolvable, Registry, Variables,
-};
-pub use introspection::IntrospectionFormat;
-pub use schema::meta;
-pub use schema::model::RootNode;
-pub use types::base::{Arguments, GraphQLType, TypeKind};
-pub use types::scalars::{EmptyMutation, ID};
-pub use validation::RuleError;
-pub use value::{
-    DefaultScalarValue, Object, ParseScalarResult, ParseScalarValue, ScalarRefValue, ScalarValue,
-    Value,
+pub use crate::{
+    ast::{FromInputValue, InputValue, Selection, ToInputValue, Type},
+    executor::{
+        Applies, Context, ExecutionError, ExecutionResult, Executor, FieldError, FieldResult,
+        FromContext, IntoFieldError, IntoResolvable, LookAheadArgument, LookAheadMethods,
+        LookAheadSelection, LookAheadValue, Registry, Variables,
+    },
+    introspection::IntrospectionFormat,
+    schema::{meta, model::RootNode},
+    types::{
+        base::{Arguments, GraphQLType, TypeKind},
+        scalars::{EmptyMutation, ID},
+    },
+    validation::RuleError,
+    value::{
+        DefaultScalarValue, Object, ParseScalarResult, ParseScalarValue, ScalarRefValue,
+        ScalarValue, Value,
+    },
 };
 
 /// An error that prevented query execution
@@ -184,6 +185,7 @@ pub enum GraphQLError<'a> {
     NoOperationProvided,
     MultipleOperationsProvided,
     UnknownOperationName,
+    IsSubscription,
 }
 
 /// Execute a query in a provided schema
@@ -201,13 +203,6 @@ where
     MutationT: GraphQLType<S, Context = CtxT>,
 {
     let document = parse_document_source(document_source, &root_node.schema)?;
-    {
-        let errors = validate_input_values(variables, &document, &root_node.schema);
-
-        if !errors.is_empty() {
-            return Err(GraphQLError::ValidationError(errors));
-        }
-    }
 
     {
         let mut ctx = ValidatorContext::new(&root_node.schema, &document);
@@ -219,7 +214,17 @@ where
         }
     }
 
-    execute_validated_query(document, operation_name, root_node, variables, context)
+    let operation = get_operation(&document, operation_name)?;
+
+    {
+        let errors = validate_input_values(variables, operation, &root_node.schema);
+
+        if !errors.is_empty() {
+            return Err(GraphQLError::ValidationError(errors));
+        }
+    }
+
+    execute_validated_query(&document, operation, root_node, variables, context)
 }
 
 /// Execute the reference introspection query in the provided schema

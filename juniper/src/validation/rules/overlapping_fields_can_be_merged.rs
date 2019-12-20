@@ -1,13 +1,11 @@
-use ast::{Arguments, Definition, Document, Field, Fragment, FragmentSpread, Selection, Type};
-use parser::{SourcePosition, Spanning};
-use schema::meta::{Field as FieldType, MetaType};
-use std::borrow::Borrow;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::fmt::Debug;
-use std::hash::Hash;
-use validation::{ValidatorContext, Visitor};
-use value::ScalarValue;
+use crate::{
+    ast::{Arguments, Definition, Document, Field, Fragment, FragmentSpread, Selection, Type},
+    parser::{SourcePosition, Spanning},
+    schema::meta::{Field as FieldType, MetaType},
+    validation::{ValidatorContext, Visitor},
+    value::ScalarValue,
+};
+use std::{borrow::Borrow, cell::RefCell, collections::HashMap, fmt::Debug, hash::Hash};
 
 #[derive(Debug)]
 struct Conflict(ConflictReason, Vec<SourcePosition>, Vec<SourcePosition>);
@@ -375,8 +373,8 @@ impl<'a, S: Debug> OverlappingFieldsCanBeMerged<'a, S> {
                             name1, name2
                         )),
                     ),
-                    vec![ast1.start.clone()],
-                    vec![ast2.start.clone()],
+                    vec![ast1.start],
+                    vec![ast2.start],
                 ));
             }
 
@@ -386,8 +384,8 @@ impl<'a, S: Debug> OverlappingFieldsCanBeMerged<'a, S> {
                         response_name.to_owned(),
                         ConflictReasonMessage::Message("they have differing arguments".to_owned()),
                     ),
-                    vec![ast1.start.clone()],
-                    vec![ast2.start.clone()],
+                    vec![ast1.start],
+                    vec![ast2.start],
                 ));
             }
         }
@@ -405,8 +403,8 @@ impl<'a, S: Debug> OverlappingFieldsCanBeMerged<'a, S> {
                             t1, t2
                         )),
                     ),
-                    vec![ast1.start.clone()],
-                    vec![ast2.start.clone()],
+                    vec![ast1.start],
+                    vec![ast2.start],
                 ));
             }
         }
@@ -415,9 +413,9 @@ impl<'a, S: Debug> OverlappingFieldsCanBeMerged<'a, S> {
         {
             let conflicts = self.find_conflicts_between_sub_selection_sets(
                 mutually_exclusive,
-                t1.map(|t| t.innermost_name()),
+                t1.map(Type::innermost_name),
                 s1,
-                t2.map(|t| t.innermost_name()),
+                t2.map(Type::innermost_name),
                 s2,
                 ctx,
             );
@@ -509,7 +507,7 @@ impl<'a, S: Debug> OverlappingFieldsCanBeMerged<'a, S> {
                 response_name.to_owned(),
                 ConflictReasonMessage::Nested(conflicts.iter().map(|c| c.0.clone()).collect()),
             ),
-            vec![pos1.clone()]
+            vec![*pos1]
                 .into_iter()
                 .chain(
                     conflicts
@@ -517,7 +515,7 @@ impl<'a, S: Debug> OverlappingFieldsCanBeMerged<'a, S> {
                         .flat_map(|&Conflict(_, ref fs1, _)| fs1.clone()),
                 )
                 .collect(),
-            vec![pos2.clone()]
+            vec![*pos2]
                 .into_iter()
                 .chain(
                     conflicts
@@ -539,8 +537,8 @@ impl<'a, S: Debug> OverlappingFieldsCanBeMerged<'a, S> {
                 let ct1 = ctx.schema.concrete_type_by_name(n1);
                 let ct2 = ctx.schema.concrete_type_by_name(n2);
 
-                if ct1.map(|ct| ct.is_leaf()).unwrap_or(false)
-                    || ct2.map(|ct| ct.is_leaf()).unwrap_or(false)
+                if ct1.map(MetaType::is_leaf).unwrap_or(false)
+                    || ct2.map(MetaType::is_leaf).unwrap_or(false)
                 {
                     n1 != n2
                 } else {
@@ -737,20 +735,25 @@ fn format_reason(reason: &ConflictReasonMessage) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::ConflictReasonMessage::*;
-    use super::{error_message, factory, ConflictReason};
+    use super::{error_message, factory, ConflictReason, ConflictReasonMessage::*};
 
-    use executor::Registry;
-    use schema::meta::MetaType;
-    use types::base::GraphQLType;
-    use types::scalars::{EmptyMutation, ID};
-
-    use parser::SourcePosition;
-    use validation::{
-        expect_fails_rule, expect_fails_rule_with_schema, expect_passes_rule,
-        expect_passes_rule_with_schema, RuleError,
+    use crate::{
+        executor::Registry,
+        schema::meta::MetaType,
+        types::{
+            base::GraphQLType,
+            scalars::{EmptyMutation, ID},
+        },
     };
-    use value::{DefaultScalarValue, ScalarRefValue, ScalarValue};
+
+    use crate::{
+        parser::SourcePosition,
+        validation::{
+            expect_fails_rule, expect_fails_rule_with_schema, expect_passes_rule,
+            expect_passes_rule_with_schema, RuleError,
+        },
+        value::{DefaultScalarValue, ScalarRefValue, ScalarValue},
+    };
 
     #[test]
     fn unique_fields() {

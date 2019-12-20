@@ -36,37 +36,32 @@ Check the LICENSE file for details.
 
 */
 
+#![doc(html_root_url = "https://docs.rs/juniper_rocket/0.2.0")]
 #![feature(decl_macro, proc_macro_hygiene)]
 
-extern crate juniper;
-extern crate rocket;
-extern crate serde_json;
-#[macro_use]
-extern crate serde_derive;
+use std::{
+    error::Error,
+    io::{Cursor, Read},
+};
 
-use std::error::Error;
-use std::io::{Cursor, Read};
+use rocket::{
+    data::{FromDataSimple, Outcome as FromDataOutcome},
+    http::{ContentType, RawStr, Status},
+    request::{FormItems, FromForm, FromFormValue},
+    response::{content, Responder, Response},
+    Data,
+    Outcome::{Failure, Forward, Success},
+    Request,
+};
 
-use rocket::data::{FromDataSimple, Outcome as FromDataOutcome};
-use rocket::http::{ContentType, RawStr, Status};
-use rocket::request::{FormItems, FromForm, FromFormValue};
-use rocket::response::{content, Responder, Response};
-use rocket::Data;
-use rocket::Outcome::{Failure, Forward, Success};
-use rocket::Request;
+use juniper::{http, InputValue};
 
-use juniper::http;
-use juniper::InputValue;
+use juniper::{
+    serde::Deserialize, DefaultScalarValue, FieldError, GraphQLType, RootNode, ScalarRefValue,
+    ScalarValue,
+};
 
-use juniper::serde::Deserialize;
-use juniper::DefaultScalarValue;
-use juniper::FieldError;
-use juniper::GraphQLType;
-use juniper::RootNode;
-use juniper::ScalarRefValue;
-use juniper::ScalarValue;
-
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, serde_derive::Deserialize, PartialEq)]
 #[serde(untagged)]
 #[serde(bound = "InputValue<S>: Deserialize<'de>")]
 enum GraphQLBatchRequest<S = DefaultScalarValue>
@@ -77,7 +72,7 @@ where
     Batch(Vec<http::GraphQLRequest<S>>),
 }
 
-#[derive(Serialize)]
+#[derive(serde_derive::Serialize)]
 #[serde(untagged)]
 enum GraphQLBatchResponse<'a, S = DefaultScalarValue>
 where
@@ -111,6 +106,15 @@ where
                     .map(|request| request.execute(root_node, context))
                     .collect(),
             ),
+        }
+    }
+
+    pub fn operation_names(&self) -> Vec<Option<&str>> {
+        match self {
+            GraphQLBatchRequest::Single(req) => vec![req.operation_name()],
+            GraphQLBatchRequest::Batch(reqs) => {
+                reqs.iter().map(|req| req.operation_name()).collect()
+            }
         }
     }
 }
@@ -221,6 +225,13 @@ where
 
         GraphQLResponse(status, json)
     }
+
+    /// Returns the operation names associated with this request.
+    ///
+    /// For batch requests there will be multiple names.
+    pub fn operation_names(&self) -> Vec<Option<&str>> {
+        self.0.operation_names()
+    }
 }
 
 impl GraphQLResponse {
@@ -233,19 +244,20 @@ impl GraphQLResponse {
     /// #
     /// # extern crate juniper;
     /// # extern crate juniper_rocket;
-    /// # #[macro_use] extern crate rocket;
+    /// # extern crate rocket;
     /// #
     /// # use rocket::http::Cookies;
     /// # use rocket::request::Form;
     /// # use rocket::response::content;
     /// # use rocket::State;
     /// #
+    /// # use juniper::tests::schema::Query;
     /// # use juniper::tests::model::Database;
     /// # use juniper::{EmptyMutation, FieldError, RootNode, Value};
     /// #
-    /// # type Schema = RootNode<'static, Database, EmptyMutation<Database>>;
+    /// # type Schema = RootNode<'static, Query, EmptyMutation<Database>>;
     /// #
-    /// #[get("/graphql?<request..>")]
+    /// #[rocket::get("/graphql?<request..>")]
     /// fn get_graphql_handler(
     ///     mut cookies: Cookies,
     ///     context: State<Database>,
@@ -509,19 +521,22 @@ mod fromform_tests {
 #[cfg(test)]
 mod tests {
 
-    use rocket::http::ContentType;
-    use rocket::local::{Client, LocalRequest};
-    use rocket::request::Form;
-    use rocket::Rocket;
-    use rocket::State;
-    use rocket::{self, get, post, routes};
+    use rocket::{
+        self, get,
+        http::ContentType,
+        local::{Client, LocalRequest},
+        post,
+        request::Form,
+        routes, Rocket, State,
+    };
 
-    use juniper::http::tests as http_tests;
-    use juniper::tests::model::Database;
-    use juniper::EmptyMutation;
-    use juniper::RootNode;
+    use juniper::{
+        http::tests as http_tests,
+        tests::{model::Database, schema::Query},
+        EmptyMutation, RootNode,
+    };
 
-    type Schema = RootNode<'static, Database, EmptyMutation<Database>>;
+    type Schema = RootNode<'static, Query, EmptyMutation<Database>>;
 
     #[get("/?<request..>")]
     fn get_graphql_handler(
@@ -566,14 +581,39 @@ mod tests {
         http_tests::run_http_test_suite(&integration);
     }
 
+    #[test]
+    fn test_operation_names() {
+        #[post("/", data = "<request>")]
+        fn post_graphql_assert_operation_name_handler(
+            context: State<Database>,
+            request: super::GraphQLRequest,
+            schema: State<Schema>,
+        ) -> super::GraphQLResponse {
+            assert_eq!(request.operation_names(), vec![Some("TestQuery")]);
+            request.execute(&schema, &context)
+        }
+
+        let rocket = make_rocket_without_routes()
+            .mount("/", routes![post_graphql_assert_operation_name_handler]);
+        let client = Client::new(rocket).expect("valid rocket");
+
+        let req = client
+            .post("/")
+            .header(ContentType::JSON)
+            .body(r#"{"query": "query TestQuery {hero{name}}", "operationName": "TestQuery"}"#);
+        let resp = make_test_response(&req);
+
+        assert_eq!(resp.status_code, 200);
+    }
+
     fn make_rocket() -> Rocket {
+        make_rocket_without_routes().mount("/", routes![post_graphql_handler, get_graphql_handler])
+    }
+
+    fn make_rocket_without_routes() -> Rocket {
         rocket::ignite()
             .manage(Database::new())
-            .manage(Schema::new(
-                Database::new(),
-                EmptyMutation::<Database>::new(),
-            ))
-            .mount("/", routes![post_graphql_handler, get_graphql_handler])
+            .manage(Schema::new(Query, EmptyMutation::<Database>::new()))
     }
 
     fn make_test_response(request: &LocalRequest) -> http_tests::TestResponse {

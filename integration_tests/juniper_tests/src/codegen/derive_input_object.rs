@@ -1,9 +1,9 @@
-#[cfg(test)]
 use fnv::FnvHashMap;
 
-use juniper::{self, FromInputValue, GraphQLType, InputValue, ToInputValue};
-
-use juniper::DefaultScalarValue;
+use juniper::{
+    self, DefaultScalarValue, FromInputValue, GraphQLInputObject, GraphQLType, InputValue,
+    ToInputValue,
+};
 
 #[derive(GraphQLInputObject, Debug, PartialEq)]
 #[graphql(
@@ -27,7 +27,7 @@ struct DocComment {
     regular_field: bool,
 }
 
-/// Doc 1.
+/// Doc 1.\
 /// Doc 2.
 ///
 /// Doc 4.
@@ -103,7 +103,7 @@ fn test_derived_input_object() {
 
     // Test default value injection.
 
-    let input_no_defaults: InputValue = ::serde_json::from_value(json!({
+    let input_no_defaults: InputValue = ::serde_json::from_value(serde_json::json!({
         "regularField": "a",
     }))
     .unwrap();
@@ -120,7 +120,7 @@ fn test_derived_input_object() {
 
     // Test with all values supplied.
 
-    let input: InputValue = ::serde_json::from_value(json!({
+    let input: InputValue = ::serde_json::from_value(serde_json::json!({
         "regularField": "a",
         "haha": 55,
         "other": true,
@@ -151,7 +151,7 @@ fn test_multi_doc_comment() {
     let meta = MultiDocComment::meta(&(), &mut registry);
     assert_eq!(
         meta.description(),
-        Some(&"Doc 1. Doc 2.\nDoc 4.".to_string())
+        Some(&"Doc 1. Doc 2.\n\nDoc 4.".to_string())
     );
 }
 

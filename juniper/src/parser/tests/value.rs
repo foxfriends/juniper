@@ -1,25 +1,34 @@
 use indexmap::IndexMap;
 
-use ast::{FromInputValue, InputValue, Type};
-use parser::value::parse_value_literal;
-use parser::{Lexer, Parser, SourcePosition, Spanning};
-use value::{DefaultScalarValue, ParseScalarValue, ScalarRefValue, ScalarValue};
+use juniper_codegen::{
+    GraphQLEnumInternal as GraphQLEnum, GraphQLInputObjectInternal as GraphQLInputObject,
+};
 
-use schema::meta::{Argument, EnumMeta, EnumValue, InputObjectMeta, MetaType, ScalarMeta};
-use schema::model::SchemaType;
-use types::scalars::EmptyMutation;
+use crate::{
+    ast::{FromInputValue, InputValue, Type},
+    parser::{value::parse_value_literal, Lexer, Parser, SourcePosition, Spanning},
+    value::{DefaultScalarValue, ParseScalarValue, ScalarRefValue, ScalarValue},
+};
 
-#[derive(GraphQLEnumInternal)]
+use crate::{
+    schema::{
+        meta::{Argument, EnumMeta, EnumValue, InputObjectMeta, MetaType, ScalarMeta},
+        model::SchemaType,
+    },
+    types::scalars::EmptyMutation,
+};
+
+#[derive(GraphQLEnum)]
 enum Enum {
     EnumValue,
 }
 
-#[derive(GraphQLInputObjectInternal)]
+#[derive(GraphQLInputObject)]
 struct Bar {
     foo: String,
 }
 
-#[derive(GraphQLInputObjectInternal)]
+#[derive(GraphQLInputObject)]
 struct Foo {
     key: i32,
     other: Bar,
@@ -27,27 +36,31 @@ struct Foo {
 
 struct Query;
 
-graphql_object!(Query: () where Scalar = <S> |&self| {
-    field int_field() -> i32 {
+#[crate::object_internal(Scalar = S)]
+impl<'a, S> Query
+where
+    S: crate::ScalarValue + 'a,
+{
+    fn int_field() -> i32 {
         42
     }
 
-    field float_field() -> f64 {
+    fn float_field() -> f64 {
         3.14
     }
 
-    field string_field() -> String {
+    fn string_field() -> String {
         "".into()
     }
 
-    field bool_field() -> bool {
+    fn bool_field() -> bool {
         true
     }
 
-    field enum_field(_foo: Foo) -> Enum {
+    fn enum_field(_foo: Foo) -> Enum {
         Enum::EnumValue
     }
-});
+}
 
 fn scalar_meta<T>(name: &'static str) -> MetaType<DefaultScalarValue>
 where

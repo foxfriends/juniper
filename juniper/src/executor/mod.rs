@@ -1,28 +1,29 @@
-use std::borrow::Cow;
-use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::fmt::Display;
-use std::sync::RwLock;
+use std::{borrow::Cow, cmp::Ordering, collections::HashMap, fmt::Display, sync::RwLock};
 
 use fnv::FnvHashMap;
 
-use ast::{
-    Definition, Document, Fragment, FromInputValue, InputValue, OperationType, Selection,
-    ToInputValue, Type,
+use crate::{
+    ast::{
+        Definition, Document, Fragment, FromInputValue, InputValue, Operation, OperationType,
+        Selection, ToInputValue, Type,
+    },
+    parser::SourcePosition,
+    value::Value,
+    GraphQLError,
 };
-use parser::SourcePosition;
-use value::Value;
-use GraphQLError;
 
-use schema::meta::{
-    Argument, DeprecationStatus, EnumMeta, EnumValue, Field, InputObjectMeta, InterfaceMeta,
-    ListMeta, MetaType, NullableMeta, ObjectMeta, PlaceholderMeta, ScalarMeta, UnionMeta,
+use crate::schema::{
+    meta::{
+        Argument, DeprecationStatus, EnumMeta, EnumValue, Field, InputObjectMeta, InterfaceMeta,
+        ListMeta, MetaType, NullableMeta, ObjectMeta, PlaceholderMeta, ScalarMeta, UnionMeta,
+    },
+    model::{RootNode, SchemaType, TypeType},
 };
-use schema::model::{RootNode, SchemaType, TypeType};
 
-use types::base::GraphQLType;
-use types::name::Name;
-use value::{DefaultScalarValue, ParseScalarValue, ScalarRefValue, ScalarValue};
+use crate::{
+    types::{base::GraphQLType, name::Name},
+    value::{DefaultScalarValue, ParseScalarValue, ScalarRefValue, ScalarValue},
+};
 
 mod look_ahead;
 
@@ -30,6 +31,7 @@ pub use self::look_ahead::{
     Applies, ChildSelection, ConcreteLookAheadSelection, LookAheadArgument, LookAheadMethods,
     LookAheadSelection, LookAheadValue,
 };
+use crate::parser::Spanning;
 
 /// A type registry used to build schemas
 ///
@@ -86,7 +88,7 @@ impl<S> ExecutionError<S> {
         ExecutionError {
             location: SourcePosition::new_origin(),
             path: Vec::new(),
-            error: error,
+            error,
         }
     }
 }
@@ -141,7 +143,7 @@ pub struct FieldError<S = DefaultScalarValue> {
 
 impl<T: Display, S> From<T> for FieldError<S>
 where
-    S: ::value::ScalarValue,
+    S: crate::value::ScalarValue,
 {
     fn from(e: T) -> FieldError<S> {
         FieldError {
@@ -157,9 +159,10 @@ impl<S> FieldError<S> {
     /// You can use the `graphql_value!` macro to construct an error:
     ///
     /// ```rust
-    /// # #[macro_use] extern crate juniper;
+    /// # extern crate juniper;
     /// use juniper::FieldError;
     /// # use juniper::DefaultScalarValue;
+    /// use juniper::graphql_value;
     ///
     /// # fn sample() {
     /// # let _: FieldError<DefaultScalarValue> =
@@ -260,7 +263,7 @@ where
 {
     fn into(self, ctx: &'a C) -> FieldResult<Option<(&'a T::Context, T)>, S> {
         self.map(|v: T| Some((<T::Context as FromContext<C>>::from(ctx), v)))
-            .map_err(|e| e.into_field_error())
+            .map_err(IntoFieldError::into_field_error)
     }
 }
 
@@ -479,7 +482,7 @@ where
 
     #[doc(hidden)]
     pub fn fragment_by_name(&self, name: &str) -> Option<&'a Fragment<S>> {
-        self.fragments.get(name).map(|f| *f)
+        self.fragments.get(name).cloned()
     }
 
     /// The current location of the executor
@@ -489,8 +492,7 @@ where
 
     /// Add an error to the execution engine at the current executor location
     pub fn push_error(&self, error: FieldError<S>) {
-        let location = self.location().clone();
-        self.push_error_at(error, location);
+        self.push_error_at(error, self.location().clone());
     }
 
     /// Add an error to the execution engine at a specific location
@@ -501,9 +503,9 @@ where
         let mut errors = self.errors.write().unwrap();
 
         errors.push(ExecutionError {
-            location: location,
-            path: path,
-            error: error,
+            location,
+            path,
+            error,
         });
     }
 
@@ -512,9 +514,29 @@ where
     /// This allows seeing the whole selection and perform operations
     /// affecting the children.
     pub fn look_ahead(&'a self) -> LookAheadSelection<'a, S> {
+        let field_name = match self.field_path {
+            FieldPath::Field(x, ..) => x,
+            FieldPath::Root(_) => unreachable!(),
+        };
         self.parent_selection_set
             .map(|p| {
-                LookAheadSelection::build_from_selection(&p[0], self.variables, self.fragments)
+                let found_field = p.iter().find(|&x| {
+                    match *x {
+                        Selection::Field(ref field) => {
+                            let field = &field.item;
+                            // TODO: support excludes.
+                            let name = field.name.item;
+                            let alias = field.alias.as_ref().map(|a| a.item);
+                            alias.unwrap_or(name) == field_name
+                        }
+                        _ => false,
+                    }
+                });
+                if let Some(p) = found_field {
+                    LookAheadSelection::build_from_selection(&p, self.variables, self.fragments)
+                } else {
+                    None
+                }
             })
             .filter(|s| s.is_some())
             .unwrap_or_else(|| {
@@ -540,7 +562,7 @@ where
                         .unwrap_or_else(Vec::new),
                 })
             })
-            .unwrap_or(LookAheadSelection::default())
+            .unwrap_or_default()
     }
 }
 
@@ -566,9 +588,9 @@ impl<S> ExecutionError<S> {
     #[doc(hidden)]
     pub fn new(location: SourcePosition, path: &[&str], error: FieldError<S>) -> ExecutionError<S> {
         ExecutionError {
-            location: location,
+            location,
             path: path.iter().map(|s| (*s).to_owned()).collect(),
-            error: error,
+            error,
         }
     }
 
@@ -588,9 +610,9 @@ impl<S> ExecutionError<S> {
     }
 }
 
-pub fn execute_validated_query<'a, QueryT, MutationT, CtxT, S>(
-    document: Document<S>,
-    operation_name: Option<&str>,
+pub fn execute_validated_query<'a, 'b, QueryT, MutationT, CtxT, S>(
+    document: &'b Document<S>,
+    operation: &'b Spanning<Operation<S>>,
     root_node: &RootNode<QueryT, MutationT, S>,
     variables: &Variables<S>,
     context: &CtxT,
@@ -599,35 +621,17 @@ where
     S: ScalarValue,
     QueryT: GraphQLType<S, Context = CtxT>,
     MutationT: GraphQLType<S, Context = CtxT>,
-    for<'b> &'b S: ScalarRefValue<'b>,
+    for<'c> &'c S: ScalarRefValue<'c>,
 {
     let mut fragments = vec![];
-    let mut operation = None;
-
-    for def in document {
+    for def in document.iter() {
         match def {
-            Definition::Operation(op) => {
-                if operation_name.is_none() && operation.is_some() {
-                    return Err(GraphQLError::MultipleOperationsProvided);
-                }
-
-                let move_op = operation_name.is_none()
-                    || op.item.name.as_ref().map(|s| s.item) == operation_name;
-
-                if move_op {
-                    operation = Some(op);
-                }
-            }
             Definition::Fragment(f) => fragments.push(f),
+            _ => (),
         };
     }
 
-    let op = match operation {
-        Some(op) => op,
-        None => return Err(GraphQLError::UnknownOperationName),
-    };
-
-    let default_variable_values = op.item.variable_definitions.map(|defs| {
+    let default_variable_values = operation.item.variable_definitions.as_ref().map(|defs| {
         defs.item
             .items
             .iter()
@@ -656,12 +660,13 @@ where
             final_vars = &all_vars;
         }
 
-        let root_type = match op.item.operation_type {
+        let root_type = match operation.item.operation_type {
             OperationType::Query => root_node.schema.query_type(),
             OperationType::Mutation => root_node
                 .schema
                 .mutation_type()
                 .expect("No mutation type found"),
+            OperationType::Subscription => unreachable!(),
         };
 
         let executor = Executor {
@@ -670,20 +675,21 @@ where
                 .map(|f| (f.item.name.item, &f.item))
                 .collect(),
             variables: final_vars,
-            current_selection_set: Some(&op.item.selection_set[..]),
+            current_selection_set: Some(&operation.item.selection_set[..]),
             parent_selection_set: None,
             current_type: root_type,
             schema: &root_node.schema,
-            context: context,
+            context,
             errors: &errors,
-            field_path: FieldPath::Root(op.start),
+            field_path: FieldPath::Root(operation.start),
         };
 
-        value = match op.item.operation_type {
+        value = match operation.item.operation_type {
             OperationType::Query => executor.resolve_into_value(&root_node.query_info, &root_node),
             OperationType::Mutation => {
                 executor.resolve_into_value(&root_node.mutation_info, &root_node.mutation_type)
             }
+            OperationType::Subscription => unreachable!(),
         };
     }
 
@@ -693,13 +699,48 @@ where
     Ok((value, errors))
 }
 
+pub fn get_operation<'a, 'b, S>(
+    document: &'b Document<'b, S>,
+    operation_name: Option<&str>,
+) -> Result<&'b Spanning<Operation<'b, S>>, GraphQLError<'a>>
+where
+    S: ScalarValue,
+{
+    let mut operation = None;
+    for def in document {
+        match def {
+            Definition::Operation(op) => {
+                if operation_name.is_none() && operation.is_some() {
+                    return Err(GraphQLError::MultipleOperationsProvided);
+                }
+
+                let move_op = operation_name.is_none()
+                    || op.item.name.as_ref().map(|s| s.item) == operation_name;
+
+                if move_op {
+                    operation = Some(op);
+                }
+            }
+            _ => (),
+        };
+    }
+    let op = match operation {
+        Some(op) => op,
+        None => return Err(GraphQLError::UnknownOperationName),
+    };
+    if op.item.operation_type == OperationType::Subscription {
+        return Err(GraphQLError::IsSubscription);
+    }
+    Ok(op)
+}
+
 impl<'r, S> Registry<'r, S>
 where
     S: ScalarValue + 'r,
 {
     /// Construct a new registry
     pub fn new(types: FnvHashMap<Name, MetaType<'r, S>>) -> Registry<'r, S> {
-        Registry { types: types }
+        Registry { types }
     }
 
     /// Get the `Type` instance for a given GraphQL type
@@ -789,10 +830,8 @@ where
 
     fn insert_placeholder(&mut self, name: Name, of_type: Type<'r>) {
         if !self.types.contains_key(&name) {
-            self.types.insert(
-                name,
-                MetaType::Placeholder(PlaceholderMeta { of_type: of_type }),
-            );
+            self.types
+                .insert(name, MetaType::Placeholder(PlaceholderMeta { of_type }));
         }
     }
 

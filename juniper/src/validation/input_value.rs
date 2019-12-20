@@ -1,13 +1,16 @@
-use std::collections::HashSet;
-use std::fmt;
+use std::{collections::HashSet, fmt};
 
-use ast::{Definition, Document, InputValue, VariableDefinitions};
-use executor::Variables;
-use parser::SourcePosition;
-use schema::meta::{EnumMeta, InputObjectMeta, MetaType, ScalarMeta};
-use schema::model::{SchemaType, TypeType};
-use validation::RuleError;
-use value::{ScalarRefValue, ScalarValue};
+use crate::{
+    ast::{InputValue, Operation, VariableDefinitions},
+    executor::Variables,
+    parser::{SourcePosition, Spanning},
+    schema::{
+        meta::{EnumMeta, InputObjectMeta, MetaType, ScalarMeta},
+        model::{SchemaType, TypeType},
+    },
+    validation::RuleError,
+    value::{ScalarRefValue, ScalarValue},
+};
 
 #[derive(Debug)]
 enum Path<'a> {
@@ -18,7 +21,7 @@ enum Path<'a> {
 
 pub fn validate_input_values<S>(
     values: &Variables<S>,
-    document: &Document<S>,
+    operation: &Spanning<Operation<S>>,
     schema: &SchemaType<S>,
 ) -> Vec<RuleError>
 where
@@ -27,12 +30,8 @@ where
 {
     let mut errs = vec![];
 
-    for def in document {
-        if let Definition::Operation(ref op) = *def {
-            if let Some(ref vars) = op.item.variable_definitions {
-                validate_var_defs(values, &vars.item, schema, &mut errs);
-            }
-        }
+    if let Some(ref vars) = operation.item.variable_definitions {
+        validate_var_defs(values, &vars.item, schema, &mut errs);
     }
 
     errs.sort();
@@ -58,22 +57,25 @@ fn validate_var_defs<S>(
                     errors.push(RuleError::new(
                         &format!(
                             r#"Variable "${}" of required type "{}" was not provided."#,
-                            name.item,
-                            def.var_type.item,
+                            name.item, def.var_type.item,
                         ),
-                        &[name.start.clone()],
+                        &[name.start],
                     ));
                 } else if let Some(v) = values.get(name.item) {
-                    errors.append(&mut unify_value(name.item, &name.start, v, &ct, schema, Path::Root));
+                    errors.append(&mut unify_value(
+                        name.item,
+                        &name.start,
+                        v,
+                        &ct,
+                        schema,
+                        Path::Root,
+                    ));
                 }
             }
-            _ => errors.push(RuleError::new(
-                &format!(
-                    r#"Variable "${}" expected value of type "{}" which cannot be used as an input type."#,
-                    name.item, def.var_type.item,
-                ),
-                &[ name.start.clone() ],
-            )),
+            _ => unreachable!(
+                r#"Variable "${}" has invalid input type "{}" after document validation."#,
+                name.item, def.var_type.item,
+            ),
         }
     }
 }

@@ -1,16 +1,84 @@
 # master
 
-- The minimum required Rust version is now `1.30.0`.
+- No changes yet
+
+# [[0.14.2] 2019-12-16](https://github.com/graphql-rust/juniper/releases/tag/juniper-0.14.2)
+
+- Fix incorrect validation with non-executed operations [#455](https://github.com/graphql-rust/juniper/issues/455)
+- Correctly handle raw identifiers in field and argument names.
+
+# [[0.14.1] 2019-10-24](https://github.com/graphql-rust/juniper/releases/tag/juniper-0.14.1)
+
+- Fix panic when an invalid scalar is used by a client [#434](https://github.com/graphql-rust/juniper/pull/434)
+- `EmptyMutation` now implements `Send` [#443](https://github.com/graphql-rust/juniper/pull/443)
+
+# [[0.14.0] 2019-09-29](https://github.com/graphql-rust/juniper/releases/tag/juniper-0.14.0)
+
+- Require `url` 2.x if `url` feature is enabled.
+- Improve lookahead visitability.
+- Add ability to parse 'subscription'.
+
+# [[0.13.1] 2019-07-29](https://github.com/graphql-rust/juniper/releases/tag/juniper-0.13.1)
+
+- Fix a regression when using lookaheads with fragments containing nested types [#404](https://github.com/graphql-rust/juniper/pull/404)
+
+- Allow `mut` arguments for resolver functions in `#[object]` macros [#402](https://github.com/graphql-rust/juniper/pull/402)
+
+# [[0.13.0] 2019-07-19](https://github.com/graphql-rust/juniper/releases/tag/juniper-0.13.0)
+
+### newtype ScalarValue derive
+
+See [#345](https://github.com/graphql-rust/juniper/pull/345).
+
+The newtype pattern can now be used with the `GraphQLScalarValue` custom derive
+to easily implement custom scalar values that just wrap another scalar,
+similar to serdes `#[serde(transparent)]` functionality.
+
+Example:
+
+```rust
+#[derive(juniper::GraphQLScalarValue)]
+struct UserId(i32);
+```
+
+### Other Changes
+
+- The `ID` scalar now implements Serde's `Serialize` and `Deserialize`
+- Add support for `dyn` trait object syntax to procedural macros
+
+# [[0.12.0] 2019-05-16](https://github.com/graphql-rust/juniper/releases/tag/juniper-0.12.0)
+
+### object macro
+
+The `graphql_object!` macro is deprecated and will be removed in the future.
+It is replaced by the new [object](https://docs.rs/juniper/latest/juniper/macro.object.html) procedural macro.
+
+[#333](https://github.com/graphql-rust/juniper/pull/333)
+
+### 2018 Edition
+
+All crates were refactored to the Rust 2018 edition.
+
+This should not have any impact on your code, since juniper already was 2018 compatible.
+
+[#345](https://github.com/graphql-rust/juniper/pull/345)
+
+### Other changes
+
+- The minimum required Rust version is now `1.34.0`.
+- The `GraphQLType` impl for () was removed to improve compile time safefty. [#355](https://github.com/graphql-rust/juniper/pull/355)
 - The `ScalarValue` custom derive has been renamed to `GraphQLScalarValue`.
 - Added built-in support for the canonical schema introspection query via
-  `juniper::introspect()`. [#307](https://github.com/graphql-rust/juniper/issues/307)
+  `juniper::introspect()`.
+  [#307](https://github.com/graphql-rust/juniper/issues/307)
 - Fix introspection query validity
   The DirectiveLocation::InlineFragment had an invalid literal value,
   which broke third party tools like apollo cli.
-- Added GraphQL Playground integration
-  The DirectiveLocation::InlineFragment had an invalid literal value,
+- Added GraphQL Playground integration.
+  The `DirectiveLocation::InlineFragment` had an invalid literal value,
   which broke third party tools like apollo cli.
-- The return type of `value::object::Object::iter/iter_mut` has changed to `impl Iter` [#312](https://github.com/graphql-rust/juniper/pull/312)
+- The return type of `value::object::Object::iter/iter_mut` has changed to `impl Iter`. [#312](https://github.com/graphql-rust/juniper/pull/312)
+- Add `GraphQLRequest::operation_name` [#353](https://github.com/graphql-rust/juniper/pull/353)
 
 # [0.11.1] 2018-12-19
 

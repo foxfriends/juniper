@@ -2,12 +2,15 @@ use std::fmt;
 
 use fnv::FnvHashMap;
 
-use ast::Type;
-use executor::{Context, Registry};
-use schema::meta::{Argument, InterfaceMeta, MetaType, ObjectMeta, PlaceholderMeta, UnionMeta};
-use types::base::GraphQLType;
-use types::name::Name;
-use value::{DefaultScalarValue, ScalarRefValue, ScalarValue};
+use juniper_codegen::GraphQLEnumInternal as GraphQLEnum;
+
+use crate::{
+    ast::Type,
+    executor::{Context, Registry},
+    schema::meta::{Argument, InterfaceMeta, MetaType, ObjectMeta, PlaceholderMeta, UnionMeta},
+    types::{base::GraphQLType, name::Name},
+    value::{DefaultScalarValue, ScalarRefValue, ScalarValue},
+};
 
 /// Root query node of a schema
 ///
@@ -57,11 +60,12 @@ pub struct DirectiveType<'a, S> {
     pub arguments: Vec<Argument<'a, S>>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, GraphQLEnumInternal)]
+#[derive(Clone, PartialEq, Eq, Debug, GraphQLEnum)]
 #[graphql(name = "__DirectiveLocation")]
 pub enum DirectiveLocation {
     Query,
     Mutation,
+    Subscription,
     Field,
     #[graphql(name = "FRAGMENT_DEFINITION")]
     FragmentDefinition,
@@ -113,8 +117,8 @@ where
             query_type: query_obj,
             mutation_type: mutation_obj,
             schema: SchemaType::new::<QueryT, MutationT>(&query_info, &mutation_info),
-            query_info: query_info,
-            mutation_info: mutation_info,
+            query_info,
+            mutation_info,
         }
     }
 }
@@ -177,13 +181,13 @@ impl<'a, S> SchemaType<'a, S> {
         }
         SchemaType {
             types: registry.types,
-            query_type_name: query_type_name,
+            query_type_name,
             mutation_type_name: if &mutation_type_name != "_EmptyMutation" {
                 Some(mutation_type_name)
             } else {
                 None
             },
-            directives: directives,
+            directives,
         }
     }
 
@@ -238,6 +242,18 @@ impl<'a, S> SchemaType<'a, S> {
             self.concrete_type_by_name(name)
                 .expect("Mutation type does not exist in schema")
         })
+    }
+
+    pub fn subscription_type(&self) -> Option<TypeType<S>> {
+        // subscription is not yet in `RootNode`,
+        // so return `None` for now
+        None
+    }
+
+    pub fn concrete_subscription_type(&self) -> Option<&MetaType<S>> {
+        // subscription is not yet in `RootNode`,
+        // so return `None` for now
+        None
     }
 
     pub fn type_list(&self) -> Vec<TypeType<S>> {
@@ -319,7 +335,7 @@ impl<'a, S> SchemaType<'a, S> {
     }
 
     pub fn is_subtype<'b>(&self, sub_type: &Type<'b>, super_type: &Type<'b>) -> bool {
-        use ast::Type::*;
+        use crate::ast::Type::*;
 
         if super_type == sub_type {
             return true;
@@ -449,6 +465,7 @@ impl fmt::Display for DirectiveLocation {
         f.write_str(match *self {
             DirectiveLocation::Query => "query",
             DirectiveLocation::Mutation => "mutation",
+            DirectiveLocation::Subscription => "subscription",
             DirectiveLocation::Field => "field",
             DirectiveLocation::FragmentDefinition => "fragment definition",
             DirectiveLocation::FragmentSpread => "fragment spread",

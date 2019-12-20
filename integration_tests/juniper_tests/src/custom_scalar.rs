@@ -2,14 +2,16 @@ extern crate serde_json;
 
 #[cfg(test)]
 use juniper::parser::Spanning;
-use juniper::parser::{ParseError, ScalarToken, Token};
-use juniper::serde::de;
 #[cfg(test)]
 use juniper::{execute, EmptyMutation, Object, RootNode, Variables};
-use juniper::{InputValue, ParseScalarResult, ScalarValue, Value};
+use juniper::{
+    parser::{ParseError, ScalarToken, Token},
+    serde::de,
+    InputValue, ParseScalarResult, ScalarValue, Value,
+};
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, GraphQLScalarValue)]
+#[derive(Debug, Clone, PartialEq, juniper::GraphQLScalarValue)]
 enum MyScalarValue {
     Int(i32),
     Long(i64),
@@ -126,7 +128,7 @@ impl<'de> de::Visitor<'de> for MyScalarValueVisitor {
     }
 }
 
-graphql_scalar!(i64 as "Long" where Scalar = MyScalarValue {
+juniper::graphql_scalar!(i64 as "Long" where Scalar = MyScalarValue {
     resolve(&self) -> Value {
         Value::scalar(*self)
     }
@@ -151,15 +153,18 @@ graphql_scalar!(i64 as "Long" where Scalar = MyScalarValue {
 
 struct TestType;
 
-graphql_object!(TestType: () where Scalar = MyScalarValue |&self| {
-    field long_field()  -> i64 {
+#[juniper::object(
+    Scalar = MyScalarValue
+)]
+impl TestType {
+    fn long_field() -> i64 {
         (::std::i32::MAX as i64) + 1
     }
 
-    field long_with_arg(long_arg: i64) -> i64 {
+    fn long_with_arg(long_arg: i64) -> i64 {
         long_arg
     }
-});
+}
 
 #[cfg(test)]
 fn run_variable_query<F>(query: &str, vars: Variables<MyScalarValue>, f: F)

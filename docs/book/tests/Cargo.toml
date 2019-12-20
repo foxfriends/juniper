@@ -6,13 +6,15 @@ edition = "2018"
 build = "build.rs"
 
 [dependencies]
-juniper = { version = "0.11", path = "../../../juniper" }
-juniper_iron = { version = "0.3", path = "../../../juniper_iron" }
+juniper = { path = "../../../juniper" }
+juniper_iron = { path = "../../../juniper_iron" }
 
-iron = "^0.5.0"
-mount = "^0.3.0"
+iron = "0.5.0"
+mount = "0.4.0"
 
 skeptic = "0.13"
+serde_json = "1.0.39"
+uuid = "0.7.4"
 
 [build-dependencies]
 skeptic = "0.13"

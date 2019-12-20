@@ -1,20 +1,19 @@
-use std::convert::From;
-use std::fmt::Debug;
-use std::marker::PhantomData;
-use std::ops::Deref;
-use std::{char, u32};
+use serde_derive::{Deserialize, Serialize};
+use std::{char, convert::From, marker::PhantomData, ops::Deref, u32};
 
-use ast::{FromInputValue, InputValue, Selection, ToInputValue};
-use executor::{Executor, Registry};
-use parser::{LexerError, ParseError, ScalarToken, Token};
-use schema::meta::MetaType;
-use types::base::GraphQLType;
-use value::{ParseScalarResult, ParseScalarValue, ScalarRefValue, ScalarValue, Value};
+use crate::{
+    ast::{InputValue, Selection, ToInputValue},
+    executor::{Executor, Registry},
+    parser::{LexerError, ParseError, ScalarToken, Token},
+    schema::meta::MetaType,
+    types::base::GraphQLType,
+    value::{ParseScalarResult, ScalarRefValue, ScalarValue, Value},
+};
 
 /// An ID as defined by the GraphQL specification
 ///
 /// Represented as a string, but can be converted _to_ from an integer as well.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ID(String);
 
 impl From<String> for ID {
@@ -274,46 +273,7 @@ graphql_scalar!(f64 as "Float" where Scalar = <S>{
     }
 });
 
-impl<S> GraphQLType<S> for ()
-where
-    S: ScalarValue,
-    for<'b> &'b S: ScalarRefValue<'b>,
-{
-    type Context = ();
-    type TypeInfo = ();
-
-    fn name(_: &()) -> Option<&str> {
-        Some("__Unit")
-    }
-
-    fn meta<'r>(_: &(), registry: &mut Registry<'r, S>) -> MetaType<'r, S>
-    where
-        S: 'r,
-        for<'b> &'b S: ScalarRefValue<'b>,
-    {
-        registry.build_scalar_type::<Self>(&()).into_meta()
-    }
-}
-
-impl<S> ParseScalarValue<S> for ()
-where
-    S: ScalarValue,
-{
-    fn from_str<'a>(_value: ScalarToken<'a>) -> ParseScalarResult<'a, S> {
-        Ok(S::from(0))
-    }
-}
-
-impl<S: Debug> FromInputValue<S> for () {
-    fn from_input_value<'a>(_: &'a InputValue<S>) -> Option<()>
-    where
-        for<'b> &'b S: ScalarRefValue<'b>,
-    {
-        None
-    }
-}
-
-/// Utility type to define read-only schemas
+/// Utillity type to define read-only schemas
 ///
 /// If you instantiate `RootNode` with this as the mutation, no mutation will be
 /// generated for the schema.
@@ -330,6 +290,9 @@ impl<T> EmptyMutation<T> {
         }
     }
 }
+
+// This is safe due to never using `T`.
+unsafe impl<T> Send for EmptyMutation<T> {}
 
 impl<S, T> GraphQLType<S> for EmptyMutation<T>
 where
@@ -354,9 +317,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::ID;
-    use parser::ScalarToken;
-    use value::{DefaultScalarValue, ParseScalarValue};
+    use super::{EmptyMutation, ID};
+    use crate::{
+        parser::ScalarToken,
+        value::{DefaultScalarValue, ParseScalarValue},
+    };
 
     #[test]
     fn test_id_from_string() {
@@ -398,5 +363,11 @@ mod tests {
             r#"unicode \u1234\u5678\u90AB\uCDEF"#,
             "unicode \u{1234}\u{5678}\u{90ab}\u{cdef}",
         );
+    }
+
+    #[test]
+    fn empty_mutation_is_send() {
+        fn check_if_send<T: Send>() {}
+        check_if_send::<EmptyMutation<()>>();
     }
 }

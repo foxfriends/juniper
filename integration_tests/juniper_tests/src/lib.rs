@@ -1,13 +1,8 @@
-#[macro_use]
-extern crate juniper;
 #[cfg(test)]
-#[macro_use]
-extern crate serde_json;
-
-#[cfg(test)]
-extern crate fnv;
-#[cfg(test)]
-extern crate indexmap;
-
 mod codegen;
+#[cfg(test)]
 mod custom_scalar;
+#[cfg(test)]
+mod issue_371;
+#[cfg(test)]
+mod issue_398;

@@ -1,19 +1,22 @@
-use executor::Variables;
-use schema::model::RootNode;
-use types::scalars::EmptyMutation;
-use value::{DefaultScalarValue, Object, Value};
+use crate::{
+    executor::Variables,
+    schema::model::RootNode,
+    types::scalars::EmptyMutation,
+    value::{DefaultScalarValue, Object, Value},
+};
 
 struct TestType;
 
-graphql_object!(TestType: () |&self| {
-    field a() -> &str {
+#[crate::object_internal]
+impl TestType {
+    fn a() -> &str {
         "a"
     }
 
-    field b() -> &str {
+    fn b() -> &str {
         "b"
     }
-});
+}
 
 fn run_variable_query<F>(query: &str, vars: Variables<DefaultScalarValue>, f: F)
 where
@@ -21,7 +24,8 @@ where
 {
     let schema = RootNode::new(TestType, EmptyMutation::<()>::new());
 
-    let (result, errs) = ::execute(query, None, &schema, &vars, &()).expect("Execution failed");
+    let (result, errs) =
+        crate::execute(query, None, &schema, &vars, &()).expect("Execution failed");
 
     assert_eq!(errs, []);
 

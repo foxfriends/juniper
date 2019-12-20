@@ -1,7 +1,6 @@
-use std::fmt;
-use std::result::Result;
+use std::{fmt, result::Result};
 
-use parser::{Lexer, LexerError, Spanning, Token};
+use crate::parser::{Lexer, LexerError, Spanning, Token};
 
 /// Error while parsing a GraphQL query
 #[derive(Debug, PartialEq)]
@@ -14,6 +13,9 @@ pub enum ParseError<'a> {
 
     /// An error during tokenization occurred
     LexerError(LexerError),
+
+    /// A scalar of unexpected type occurred in the source
+    ExpectedScalarError(&'static str),
 }
 
 #[doc(hidden)]
@@ -43,7 +45,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(Parser { tokens: tokens })
+        Ok(Parser { tokens })
     }
 
     #[doc(hidden)]
@@ -55,8 +57,8 @@ impl<'a> Parser<'a> {
     pub fn next(&mut self) -> ParseResult<'a, Token<'a>> {
         if self.tokens.len() == 1 {
             Err(Spanning::start_end(
-                &self.peek().start.clone(),
-                &self.peek().end.clone(),
+                &self.peek().start,
+                &self.peek().end,
                 ParseError::UnexpectedEndOfFile,
             ))
         } else {
@@ -197,6 +199,7 @@ impl<'a> fmt::Display for ParseError<'a> {
             ParseError::UnexpectedToken(ref token) => write!(f, "Unexpected \"{}\"", token),
             ParseError::UnexpectedEndOfFile => write!(f, "Unexpected end of input"),
             ParseError::LexerError(ref err) => err.fmt(f),
+            ParseError::ExpectedScalarError(err) => err.fmt(f),
         }
     }
 }

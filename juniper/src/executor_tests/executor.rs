@@ -1,40 +1,62 @@
 mod field_execution {
-    use ast::InputValue;
-    use schema::model::RootNode;
-    use types::scalars::EmptyMutation;
-    use value::Value;
+    use crate::{
+        ast::InputValue, schema::model::RootNode, types::scalars::EmptyMutation, value::Value,
+    };
 
     struct DataType;
     struct DeepDataType;
 
-    graphql_object!(DataType: () |&self| {
-        field a() -> &str { "Apple" }
-        field b() -> &str { "Banana" }
-        field c() -> &str { "Cookie" }
-        field d() -> &str { "Donut" }
-        field e() -> &str { "Egg" }
-        field f() -> &str { "Fish" }
+    #[crate::object_internal]
+    impl DataType {
+        fn a() -> &str {
+            "Apple"
+        }
+        fn b() -> &str {
+            "Banana"
+        }
+        fn c() -> &str {
+            "Cookie"
+        }
+        fn d() -> &str {
+            "Donut"
+        }
+        fn e() -> &str {
+            "Egg"
+        }
+        fn f() -> &str {
+            "Fish"
+        }
 
-        field pic(size: Option<i32>) -> String {
+        fn pic(size: Option<i32>) -> String {
             format!("Pic of size: {}", size.unwrap_or(50))
         }
 
-        field deep() -> DeepDataType {
+        fn deep() -> DeepDataType {
             DeepDataType
         }
-    });
+    }
 
-    graphql_object!(DeepDataType: () |&self| {
-        field a() -> &str { "Already Been Done" }
-        field b() -> &str { "Boring" }
-        field c() -> Vec<Option<&str>> { vec![Some("Contrived"), None, Some("Confusing")] }
+    #[crate::object_internal]
+    impl DeepDataType {
+        fn a() -> &str {
+            "Already Been Done"
+        }
+        fn b() -> &str {
+            "Boring"
+        }
+        fn c() -> Vec<Option<&str>> {
+            vec![Some("Contrived"), None, Some("Confusing")]
+        }
 
-        field deeper() -> Vec<Option<DataType>> { vec![Some(DataType), None, Some(DataType) ] }
-    });
+        fn deeper() -> Vec<Option<DataType>> {
+            vec![Some(DataType), None, Some(DataType)]
+        }
+    }
 
     #[test]
     fn test() {
-        let schema = RootNode::new(DataType, EmptyMutation::<()>::new());
+        let schema =
+            RootNode::<_, _, crate::DefaultScalarValue>::new(DataType, EmptyMutation::<()>::new());
         let doc = r"
           query Example($size: Int) {
             a,
@@ -65,7 +87,8 @@ mod field_execution {
             .into_iter()
             .collect();
 
-        let (result, errs) = ::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
+        let (result, errs) =
+            crate::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
 
         assert_eq!(errs, []);
 
@@ -132,18 +155,25 @@ mod field_execution {
 }
 
 mod merge_parallel_fragments {
-    use schema::model::RootNode;
-    use types::scalars::EmptyMutation;
-    use value::Value;
+    use crate::{schema::model::RootNode, types::scalars::EmptyMutation, value::Value};
 
     struct Type;
 
-    graphql_object!(Type: () |&self| {
-        field a() -> &str { "Apple" }
-        field b() -> &str { "Banana" }
-        field c() -> &str { "Cherry" }
-        field deep() -> Type { Type }
-    });
+    #[crate::object_internal]
+    impl Type {
+        fn a() -> &str {
+            "Apple"
+        }
+        fn b() -> &str {
+            "Banana"
+        }
+        fn c() -> &str {
+            "Cherry"
+        }
+        fn deep() -> Type {
+            Type
+        }
+    }
 
     #[test]
     fn test() {
@@ -161,7 +191,8 @@ mod merge_parallel_fragments {
 
         let vars = vec![].into_iter().collect();
 
-        let (result, errs) = ::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
+        let (result, errs) =
+            crate::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
 
         assert_eq!(errs, []);
 
@@ -205,28 +236,48 @@ mod merge_parallel_fragments {
 }
 
 mod merge_parallel_inline_fragments {
-    use schema::model::RootNode;
-    use types::scalars::EmptyMutation;
-    use value::Value;
+    use crate::{schema::model::RootNode, types::scalars::EmptyMutation, value::Value};
 
     struct Type;
     struct Other;
 
-    graphql_object!(Type: () |&self| {
-        field a() -> &str { "Apple" }
-        field b() -> &str { "Banana" }
-        field c() -> &str { "Cherry" }
-        field deep() -> Type { Type }
-        field other() -> Vec<Other> { vec![Other, Other] }
-    });
+    #[crate::object_internal]
+    impl Type {
+        fn a() -> &str {
+            "Apple"
+        }
+        fn b() -> &str {
+            "Banana"
+        }
+        fn c() -> &str {
+            "Cherry"
+        }
+        fn deep() -> Type {
+            Type
+        }
+        fn other() -> Vec<Other> {
+            vec![Other, Other]
+        }
+    }
 
-    graphql_object!(Other: () |&self| {
-        field a() -> &str { "Apple" }
-        field b() -> &str { "Banana" }
-        field c() -> &str { "Cherry" }
-        field deep() -> Type { Type }
-        field other() -> Vec<Other> { vec![Other, Other] }
-    });
+    #[crate::object_internal]
+    impl Other {
+        fn a() -> &str {
+            "Apple"
+        }
+        fn b() -> &str {
+            "Banana"
+        }
+        fn c() -> &str {
+            "Cherry"
+        }
+        fn deep() -> Type {
+            Type
+        }
+        fn other() -> Vec<Other> {
+            vec![Other, Other]
+        }
+    }
 
     #[test]
     fn test() {
@@ -258,7 +309,8 @@ mod merge_parallel_inline_fragments {
 
         let vars = vec![].into_iter().collect();
 
-        let (result, errs) = ::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
+        let (result, errs) =
+            crate::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
 
         assert_eq!(errs, []);
 
@@ -326,10 +378,9 @@ mod merge_parallel_inline_fragments {
 }
 
 mod threads_context_correctly {
-    use executor::Context;
-    use schema::model::RootNode;
-    use types::scalars::EmptyMutation;
-    use value::Value;
+    use crate::{
+        executor::Context, schema::model::RootNode, types::scalars::EmptyMutation, value::Value,
+    };
 
     struct Schema;
 
@@ -339,9 +390,14 @@ mod threads_context_correctly {
 
     impl Context for TestContext {}
 
-    graphql_object!(Schema: TestContext |&self| {
-        field a(&executor) -> String { executor.context().value.clone() }
-    });
+    #[crate::object_internal(
+        Context = TestContext,
+    )]
+    impl Schema {
+        fn a(context: &TestContext) -> String {
+            context.value.clone()
+        }
+    }
 
     #[test]
     fn test() {
@@ -350,7 +406,7 @@ mod threads_context_correctly {
 
         let vars = vec![].into_iter().collect();
 
-        let (result, errs) = ::execute(
+        let (result, errs) = crate::execute(
             doc,
             None,
             &schema,
@@ -379,11 +435,13 @@ mod threads_context_correctly {
 mod dynamic_context_switching {
     use indexmap::IndexMap;
 
-    use executor::{Context, ExecutionError, FieldError, FieldResult};
-    use parser::SourcePosition;
-    use schema::model::RootNode;
-    use types::scalars::EmptyMutation;
-    use value::Value;
+    use crate::{
+        executor::{Context, ExecutionError, FieldError, FieldResult},
+        parser::SourcePosition,
+        schema::model::RootNode,
+        types::scalars::EmptyMutation,
+        value::Value,
+    };
 
     struct Schema;
 
@@ -400,36 +458,42 @@ mod dynamic_context_switching {
 
     struct ItemRef;
 
-    graphql_object!(Schema: OuterContext |&self| {
-        field item_opt(&executor, key: i32) -> Option<(&InnerContext, ItemRef)> {
+    #[crate::object_internal(Context = OuterContext)]
+    impl Schema {
+        fn item_opt(context: &OuterContext, key: i32) -> Option<(&InnerContext, ItemRef)> {
             executor.context().items.get(&key).map(|c| (c, ItemRef))
         }
 
-        field item_res(&executor, key: i32) -> FieldResult<(&InnerContext, ItemRef)> {
-            let res = executor.context().items.get(&key)
+        fn item_res(context: &OuterContext, key: i32) -> FieldResult<(&InnerContext, ItemRef)> {
+            let res = context
+                .items
+                .get(&key)
                 .ok_or(format!("Could not find key {}", key))
                 .map(|c| (c, ItemRef))?;
             Ok(res)
         }
 
-        field item_res_opt(&executor, key: i32) -> FieldResult<Option<(&InnerContext, ItemRef)>> {
+        fn item_res_opt(
+            context: &OuterContext,
+            key: i32,
+        ) -> FieldResult<Option<(&InnerContext, ItemRef)>> {
             if key > 100 {
                 Err(format!("Key too large: {}", key))?;
             }
-            Ok(executor.context().items.get(&key)
-               .map(|c| (c, ItemRef)))
+            Ok(context.items.get(&key).map(|c| (c, ItemRef)))
         }
 
-        field item_always(&executor, key: i32) -> (&InnerContext, ItemRef) {
-            executor.context().items.get(&key)
-                .map(|c| (c, ItemRef))
-                .unwrap()
+        fn item_always(context: &OuterContext, key: i32) -> (&InnerContext, ItemRef) {
+            context.items.get(&key).map(|c| (c, ItemRef)).unwrap()
         }
-    });
+    }
 
-    graphql_object!(ItemRef: InnerContext |&self| {
-        field value(&executor) -> String { executor.context().value.clone() }
-    });
+    #[crate::object_internal(Context = InnerContext)]
+    impl ItemRef {
+        fn value(context: &InnerContext) -> String {
+            context.value.clone()
+        }
+    }
 
     #[test]
     fn test_opt() {
@@ -457,7 +521,8 @@ mod dynamic_context_switching {
             .collect(),
         };
 
-        let (result, errs) = ::execute(doc, None, &schema, &vars, &ctx).expect("Execution failed");
+        let (result, errs) =
+            crate::execute(doc, None, &schema, &vars, &ctx).expect("Execution failed");
 
         assert_eq!(errs, []);
 
@@ -513,7 +578,8 @@ mod dynamic_context_switching {
             .collect(),
         };
 
-        let (result, errs) = ::execute(doc, None, &schema, &vars, &ctx).expect("Execution failed");
+        let (result, errs) =
+            crate::execute(doc, None, &schema, &vars, &ctx).expect("Execution failed");
 
         assert_eq!(errs, vec![]);
 
@@ -566,7 +632,8 @@ mod dynamic_context_switching {
             .collect(),
         };
 
-        let (result, errs) = ::execute(doc, None, &schema, &vars, &ctx).expect("Execution failed");
+        let (result, errs) =
+            crate::execute(doc, None, &schema, &vars, &ctx).expect("Execution failed");
 
         assert_eq!(
             errs,
@@ -614,7 +681,8 @@ mod dynamic_context_switching {
             .collect(),
         };
 
-        let (result, errs) = ::execute(doc, None, &schema, &vars, &ctx).expect("Execution failed");
+        let (result, errs) =
+            crate::execute(doc, None, &schema, &vars, &ctx).expect("Execution failed");
 
         assert_eq!(
             errs,
@@ -674,7 +742,8 @@ mod dynamic_context_switching {
             .collect(),
         };
 
-        let (result, errs) = ::execute(doc, None, &schema, &vars, &ctx).expect("Execution failed");
+        let (result, errs) =
+            crate::execute(doc, None, &schema, &vars, &ctx).expect("Execution failed");
 
         assert_eq!(errs, []);
 
@@ -699,11 +768,13 @@ mod dynamic_context_switching {
 }
 
 mod propagates_errors_to_nullable_fields {
-    use executor::{ExecutionError, FieldError, FieldResult, IntoFieldError};
-    use parser::SourcePosition;
-    use schema::model::RootNode;
-    use types::scalars::EmptyMutation;
-    use value::{ScalarValue, Value};
+    use crate::{
+        executor::{ExecutionError, FieldError, FieldResult, IntoFieldError},
+        parser::SourcePosition,
+        schema::model::RootNode,
+        types::scalars::EmptyMutation,
+        value::{ScalarValue, Value},
+    };
 
     struct Schema;
     struct Inner;
@@ -728,19 +799,37 @@ mod propagates_errors_to_nullable_fields {
         }
     }
 
-    graphql_object!(Schema: () |&self| {
-        field inner() -> Inner { Inner }
-        field inners() -> Vec<Inner> { (0..5).map(|_| Inner).collect() }
-        field nullable_inners() -> Vec<Option<Inner>> { (0..5).map(|_| Some(Inner)).collect() }
-    });
+    #[crate::object_internal]
+    impl Schema {
+        fn inner() -> Inner {
+            Inner
+        }
+        fn inners() -> Vec<Inner> {
+            (0..5).map(|_| Inner).collect()
+        }
+        fn nullable_inners() -> Vec<Option<Inner>> {
+            (0..5).map(|_| Some(Inner)).collect()
+        }
+    }
 
-    graphql_object!(Inner: () |&self| {
-        field nullable_field() -> Option<Inner> { Some(Inner) }
-        field non_nullable_field() -> Inner { Inner }
-        field nullable_error_field() -> FieldResult<Option<&str>> { Err("Error for nullableErrorField")? }
-        field non_nullable_error_field() -> FieldResult<&str> { Err("Error for nonNullableErrorField")? }
-        field custom_error_field() -> Result<&str, CustomError> { Err(CustomError::NotFound) }
-    });
+    #[crate::object_internal]
+    impl Inner {
+        fn nullable_field() -> Option<Inner> {
+            Some(Inner)
+        }
+        fn non_nullable_field() -> Inner {
+            Inner
+        }
+        fn nullable_error_field() -> FieldResult<Option<&str>> {
+            Err("Error for nullableErrorField")?
+        }
+        fn non_nullable_error_field() -> FieldResult<&str> {
+            Err("Error for nonNullableErrorField")?
+        }
+        fn custom_error_field() -> Result<&str, CustomError> {
+            Err(CustomError::NotFound)
+        }
+    }
 
     #[test]
     fn nullable_first_level() {
@@ -749,7 +838,8 @@ mod propagates_errors_to_nullable_fields {
 
         let vars = vec![].into_iter().collect();
 
-        let (result, errs) = ::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
+        let (result, errs) =
+            crate::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
 
         println!("Result: {:#?}", result);
 
@@ -775,7 +865,8 @@ mod propagates_errors_to_nullable_fields {
 
         let vars = vec![].into_iter().collect();
 
-        let (result, errs) = ::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
+        let (result, errs) =
+            crate::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
 
         println!("Result: {:#?}", result);
 
@@ -798,7 +889,8 @@ mod propagates_errors_to_nullable_fields {
 
         let vars = vec![].into_iter().collect();
 
-        let (result, errs) = ::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
+        let (result, errs) =
+            crate::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
 
         println!("Result: {:#?}", result);
 
@@ -821,7 +913,8 @@ mod propagates_errors_to_nullable_fields {
 
         let vars = vec![].into_iter().collect();
 
-        let (result, errs) = ::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
+        let (result, errs) =
+            crate::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
 
         println!("Result: {:#?}", result);
 
@@ -847,7 +940,8 @@ mod propagates_errors_to_nullable_fields {
 
         let vars = vec![].into_iter().collect();
 
-        let (result, errs) = ::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
+        let (result, errs) =
+            crate::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
 
         println!("Result: {:#?}", result);
 
@@ -870,7 +964,8 @@ mod propagates_errors_to_nullable_fields {
 
         let vars = vec![].into_iter().collect();
 
-        let (result, errs) = ::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
+        let (result, errs) =
+            crate::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
 
         println!("Result: {:#?}", result);
 
@@ -896,7 +991,8 @@ mod propagates_errors_to_nullable_fields {
 
         let vars = vec![].into_iter().collect();
 
-        let (result, errs) = ::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
+        let (result, errs) =
+            crate::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
 
         println!("Result: {:#?}", result);
 
@@ -919,7 +1015,8 @@ mod propagates_errors_to_nullable_fields {
 
         let vars = vec![].into_iter().collect();
 
-        let (result, errs) = ::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
+        let (result, errs) =
+            crate::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
 
         println!("Result: {:#?}", result);
 
@@ -962,25 +1059,29 @@ mod propagates_errors_to_nullable_fields {
 }
 
 mod named_operations {
-    use schema::model::RootNode;
-    use types::scalars::EmptyMutation;
-    use value::Value;
-    use GraphQLError;
+    use crate::{
+        schema::model::RootNode, types::scalars::EmptyMutation, value::Value, GraphQLError,
+    };
 
     struct Schema;
 
-    graphql_object!(Schema: () |&self| {
-        field a() -> &str { "b" }
-    });
+    #[crate::object_internal]
+    impl Schema {
+        fn a(p: Option<String>) -> &str {
+            "b"
+        }
+    }
 
     #[test]
     fn uses_inline_operation_if_no_name_provided() {
-        let schema = RootNode::new(Schema, EmptyMutation::<()>::new());
+        let schema =
+            RootNode::<_, _, crate::DefaultScalarValue>::new(Schema, EmptyMutation::<()>::new());
         let doc = r"{ a }";
 
         let vars = vec![].into_iter().collect();
 
-        let (result, errs) = ::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
+        let (result, errs) =
+            crate::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
 
         assert_eq!(errs, []);
 
@@ -997,7 +1098,8 @@ mod named_operations {
 
         let vars = vec![].into_iter().collect();
 
-        let (result, errs) = ::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
+        let (result, errs) =
+            crate::execute(doc, None, &schema, &vars, &()).expect("Execution failed");
 
         assert_eq!(errs, []);
 
@@ -1010,12 +1112,13 @@ mod named_operations {
     #[test]
     fn uses_named_operation_if_name_provided() {
         let schema = RootNode::new(Schema, EmptyMutation::<()>::new());
-        let doc = r"query Example { first: a } query OtherExample { second: a }";
+        let doc =
+            r"query Example($p: String!) { first: a(p: $p) } query OtherExample { second: a }";
 
         let vars = vec![].into_iter().collect();
 
-        let (result, errs) =
-            ::execute(doc, Some("OtherExample"), &schema, &vars, &()).expect("Execution failed");
+        let (result, errs) = crate::execute(doc, Some("OtherExample"), &schema, &vars, &())
+            .expect("Execution failed");
 
         assert_eq!(errs, []);
 
@@ -1032,7 +1135,7 @@ mod named_operations {
 
         let vars = vec![].into_iter().collect();
 
-        let err = ::execute(doc, None, &schema, &vars, &()).unwrap_err();
+        let err = crate::execute(doc, None, &schema, &vars, &()).unwrap_err();
 
         assert_eq!(err, GraphQLError::MultipleOperationsProvided);
     }
@@ -1044,7 +1147,7 @@ mod named_operations {
 
         let vars = vec![].into_iter().collect();
 
-        let err = ::execute(doc, Some("UnknownExample"), &schema, &vars, &()).unwrap_err();
+        let err = crate::execute(doc, Some("UnknownExample"), &schema, &vars, &()).unwrap_err();
 
         assert_eq!(err, GraphQLError::UnknownOperationName);
     }

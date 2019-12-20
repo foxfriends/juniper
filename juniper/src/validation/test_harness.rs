@@ -1,12 +1,17 @@
-use ast::{FromInputValue, InputValue};
-use executor::Registry;
-use parser::parse_document_source;
-use schema::meta::{EnumValue, MetaType};
-use schema::model::{DirectiveLocation, DirectiveType, RootNode};
-use types::base::GraphQLType;
-use types::scalars::ID;
-use validation::{visit, MultiVisitorNil, RuleError, ValidatorContext, Visitor};
-use value::{ScalarRefValue, ScalarValue};
+use juniper_codegen::GraphQLInputObjectInternal as GraphQLInputObject;
+
+use crate::{
+    ast::{FromInputValue, InputValue},
+    executor::Registry,
+    parser::parse_document_source,
+    schema::{
+        meta::{EnumValue, MetaType},
+        model::{DirectiveLocation, DirectiveType, RootNode},
+    },
+    types::{base::GraphQLType, scalars::ID},
+    validation::{visit, MultiVisitorNil, RuleError, ValidatorContext, Visitor},
+    value::{ScalarRefValue, ScalarValue},
+};
 
 struct Being;
 struct Pet;
@@ -27,7 +32,7 @@ struct ComplicatedArgs;
 
 pub(crate) struct QueryRoot;
 
-#[derive(Debug, GraphQLInputObjectInternal)]
+#[derive(Debug, GraphQLInputObject)]
 struct TestInput {
     id: i32,
     name: String,

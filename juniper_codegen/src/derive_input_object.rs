@@ -1,10 +1,10 @@
 use std::str::FromStr;
 
 use proc_macro2::{Span, TokenStream};
-use quote::ToTokens;
-use syn::{self, Data, DeriveInput, Field, Fields, Ident, Meta, NestedMeta};
+use quote::{quote, ToTokens};
+use syn::{self, parse_quote, Data, DeriveInput, Field, Fields, Ident, Meta, NestedMeta};
 
-use util::*;
+use crate::util::*;
 
 #[derive(Default, Debug)]
 struct ObjAttrs {
@@ -103,8 +103,8 @@ impl ObjFieldAttrs {
                 }
 
                 match item {
-                    NestedMeta::Meta(Meta::Word(ref ident)) => {
-                        if ident == "default" {
+                    NestedMeta::Meta(Meta::Path(ref path)) => {
+                        if path.is_ident("default") {
                             res.default = true;
                             continue;
                         }
@@ -145,7 +145,7 @@ pub fn impl_input_object(ast: &syn::DeriveInput, is_internal: bool) -> TokenStre
     // Parse attributes.
     let ident = &ast.ident;
     let attrs = ObjAttrs::from_input(ast);
-    let name = attrs.name.unwrap_or(ast.ident.to_string());
+    let name = attrs.name.unwrap_or_else(|| ast.ident.to_string());
     let generics = &ast.generics;
 
     let meta_description = match attrs.description {
@@ -170,7 +170,7 @@ pub fn impl_input_object(ast: &syn::DeriveInput, is_internal: bool) -> TokenStre
             }
             None => {
                 // Note: auto camel casing when no custom name specified.
-                ::util::to_camel_case(&field_ident.to_string())
+                crate::util::to_camel_case(&unraw(&field_ident.to_string()))
             }
         };
         let field_description = match field_attrs.description {
@@ -183,7 +183,7 @@ pub fn impl_input_object(ast: &syn::DeriveInput, is_internal: bool) -> TokenStre
                 Some(quote! { Default::default() })
             } else {
                 match field_attrs.default_expr {
-                    Some(ref def) => match ::proc_macro::TokenStream::from_str(def) {
+                    Some(ref def) => match proc_macro::TokenStream::from_str(def) {
                         Ok(t) => match syn::parse::<syn::Expr>(t) {
                             Ok(e) => {
                                 let mut tokens = TokenStream::new();
@@ -294,7 +294,7 @@ pub fn impl_input_object(ast: &syn::DeriveInput, is_internal: bool) -> TokenStre
                 where #scalar: 'r
             {
                 let fields = &[
-                    #(#meta_fields)*
+                    #meta_fields
                 ];
                 let meta = registry.build_input_object_type::<#ident>(&(), fields);
                 #meta_description
@@ -311,7 +311,7 @@ pub fn impl_input_object(ast: &syn::DeriveInput, is_internal: bool) -> TokenStre
             {
                 if let Some(obj) = value.to_object_value() {
                     let item = #ident {
-                        #(#from_inputs)*
+                        #from_inputs
                     };
                     Some(item)
                 }
@@ -326,7 +326,7 @@ pub fn impl_input_object(ast: &syn::DeriveInput, is_internal: bool) -> TokenStre
         {
             fn to_input_value(&self) -> #juniper_path::InputValue<#scalar> {
                 #juniper_path::InputValue::object(vec![
-                    #(#to_inputs)*
+                    #to_inputs
                 ].into_iter().collect())
             }
         }

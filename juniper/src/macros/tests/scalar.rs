@@ -1,7 +1,9 @@
-use executor::Variables;
-use schema::model::RootNode;
-use types::scalars::EmptyMutation;
-use value::{DefaultScalarValue, Object, ParseScalarResult, ParseScalarValue, Value};
+use crate::{
+    executor::Variables,
+    schema::model::RootNode,
+    types::scalars::EmptyMutation,
+    value::{DefaultScalarValue, Object, ParseScalarResult, ParseScalarValue, Value},
+};
 
 struct DefaultName(i32);
 struct OtherOrder(i32);
@@ -78,12 +80,21 @@ graphql_scalar!(ScalarDescription  {
     }
 });
 
-graphql_object!(Root: () |&self| {
-    field default_name() -> DefaultName { DefaultName(0) }
-    field other_order() -> OtherOrder { OtherOrder(0) }
-    field named() -> Named { Named(0) }
-    field scalar_description() -> ScalarDescription { ScalarDescription(0) }
-});
+#[crate::object_internal]
+impl Root {
+    fn default_name() -> DefaultName {
+        DefaultName(0)
+    }
+    fn other_order() -> OtherOrder {
+        OtherOrder(0)
+    }
+    fn named() -> Named {
+        Named(0)
+    }
+    fn scalar_description() -> ScalarDescription {
+        ScalarDescription(0)
+    }
+}
 
 fn run_type_info_query<F>(doc: &str, f: F)
 where
@@ -92,7 +103,7 @@ where
     let schema = RootNode::new(Root {}, EmptyMutation::<()>::new());
 
     let (result, errs) =
-        ::execute(doc, None, &schema, &Variables::new(), &()).expect("Execution failed");
+        crate::execute(doc, None, &schema, &Variables::new(), &()).expect("Execution failed");
 
     assert_eq!(errs, []);
 

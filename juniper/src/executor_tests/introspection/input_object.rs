@@ -1,52 +1,56 @@
-use ast::{FromInputValue, InputValue};
-use executor::Variables;
-use schema::model::RootNode;
-use types::scalars::EmptyMutation;
-use value::{DefaultScalarValue, Object, Value};
+use juniper_codegen::GraphQLInputObjectInternal as GraphQLInputObject;
+
+use crate::{
+    ast::{FromInputValue, InputValue},
+    executor::Variables,
+    schema::model::RootNode,
+    types::scalars::EmptyMutation,
+    value::{DefaultScalarValue, Object, Value},
+};
 
 struct Root;
 
-#[derive(GraphQLInputObjectInternal)]
+#[derive(GraphQLInputObject)]
 struct DefaultName {
     field_one: String,
     field_two: String,
 }
 
-#[derive(GraphQLInputObjectInternal)]
+#[derive(GraphQLInputObject)]
 struct NoTrailingComma {
     field_one: String,
     field_two: String,
 }
 
-#[derive(GraphQLInputObjectInternal, Debug)]
+#[derive(GraphQLInputObject, Debug)]
 struct Derive {
     field_one: String,
 }
 
-#[derive(GraphQLInputObjectInternal, Debug)]
+#[derive(GraphQLInputObject, Debug)]
 #[graphql(name = "ANamedInputObject")]
 struct Named {
     field_one: String,
 }
 
-#[derive(GraphQLInputObjectInternal, Debug)]
+#[derive(GraphQLInputObject, Debug)]
 #[graphql(description = "Description for the input object")]
 struct Description {
     field_one: String,
 }
 
-#[derive(GraphQLInputObjectInternal, Debug)]
+#[derive(GraphQLInputObject, Debug)]
 pub struct Public {
     field_one: String,
 }
 
-#[derive(GraphQLInputObjectInternal, Debug)]
+#[derive(GraphQLInputObject, Debug)]
 #[graphql(description = "Description for the input object")]
 pub struct PublicWithDescription {
     field_one: String,
 }
 
-#[derive(GraphQLInputObjectInternal, Debug)]
+#[derive(GraphQLInputObject, Debug)]
 #[graphql(
     name = "APublicNamedInputObjectWithDescription",
     description = "Description for the input object"
@@ -55,13 +59,13 @@ pub struct NamedPublicWithDescription {
     field_one: String,
 }
 
-#[derive(GraphQLInputObjectInternal, Debug)]
+#[derive(GraphQLInputObject, Debug)]
 #[graphql(name = "APublicNamedInputObject")]
 pub struct NamedPublic {
     field_one: String,
 }
 
-#[derive(GraphQLInputObjectInternal, Debug)]
+#[derive(GraphQLInputObject, Debug)]
 struct FieldDescription {
     #[graphql(description = "The first field")]
     field_one: String,
@@ -69,7 +73,7 @@ struct FieldDescription {
     field_two: String,
 }
 
-#[derive(GraphQLInputObjectInternal, Debug)]
+#[derive(GraphQLInputObject, Debug)]
 struct FieldWithDefaults {
     #[graphql(default = "123")]
     field_one: i32,
@@ -77,8 +81,9 @@ struct FieldWithDefaults {
     field_two: i32,
 }
 
-graphql_object!(Root: () |&self| {
-    field test_field(
+#[crate::object_internal]
+impl Root {
+    fn test_field(
         a1: DefaultName,
         a2: NoTrailingComma,
         a3: Derive,
@@ -93,7 +98,7 @@ graphql_object!(Root: () |&self| {
     ) -> i32 {
         0
     }
-});
+}
 
 fn run_type_info_query<F>(doc: &str, f: F)
 where
@@ -102,7 +107,7 @@ where
     let schema = RootNode::new(Root {}, EmptyMutation::<()>::new());
 
     let (result, errs) =
-        ::execute(doc, None, &schema, &Variables::new(), &()).expect("Execution failed");
+        crate::execute(doc, None, &schema, &Variables::new(), &()).expect("Execution failed");
 
     assert_eq!(errs, []);
 

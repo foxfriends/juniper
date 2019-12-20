@@ -1,7 +1,43 @@
-use value::{self, Value::Null};
+use crate::value::{
+    self,
+    Value::{self, Null},
+};
+
+// Sort a nested schema Value.
+// In particular, lists are sorted by the "name" key of children, if present.
+// Only needed for comparisons.
+pub(super) fn sort_schema_value(value: &mut Value) {
+    match value {
+        Value::Null | Value::Scalar(_) => {}
+        Value::List(ref mut items) => {
+            items.sort_by(|a, b| {
+                let name_a = a
+                    .as_object_value()
+                    .and_then(|v| v.get_field_value("name"))
+                    .and_then(|v| v.as_scalar_value::<String>())
+                    .map(|x| x.as_str())
+                    .unwrap_or("");
+                let name_b = b
+                    .as_object_value()
+                    .and_then(|v| v.get_field_value("name"))
+                    .and_then(|v| v.as_scalar_value::<String>())
+                    .map(|x| x.as_str())
+                    .unwrap_or("");
+                name_a.cmp(name_b)
+            });
+            for item in items.iter_mut() {
+                sort_schema_value(item);
+            }
+        }
+        Value::Object(ref mut obj) => {
+            obj.iter_mut()
+                .for_each(|(_key, item)| sort_schema_value(item));
+        }
+    }
+}
 
 pub(crate) fn schema_introspection_result() -> value::Value {
-    graphql_value!({
+    let mut v = graphql_value!({
         "__schema": {
           "queryType": {
             "name": "Query"
@@ -311,56 +347,56 @@ pub(crate) fn schema_introspection_result() -> value::Value {
             {
               "kind": "ENUM",
               "name": "__TypeKind",
-              "description": "GraphQL type kind\nThe GraphQL specification defines a number of type kinds - the meta type of a type.",
+              "description": "GraphQL type kind\n\nThe GraphQL specification defines a number of type kinds - the meta type of a type.",
               "fields": Null,
               "inputFields": Null,
               "interfaces": Null,
               "enumValues": [
                 {
                   "name": "SCALAR",
-                  "description": "## Scalar types\nScalar types appear as the leaf nodes of GraphQL queries. Strings, numbers, and booleans are the built in types, and while it's possible to define your own, it's relatively uncommon.",
+                  "description": "## Scalar types\n\nScalar types appear as the leaf nodes of GraphQL queries. Strings, numbers, and booleans are the built in types, and while it's possible to define your own, it's relatively uncommon.",
                   "isDeprecated": false,
                   "deprecationReason": Null
                 },
                 {
                   "name": "OBJECT",
-                  "description": "## Object types\nThe most common type to be implemented by users. Objects have fields and can implement interfaces.",
+                  "description": "## Object types\n\nThe most common type to be implemented by users. Objects have fields and can implement interfaces.",
                   "isDeprecated": false,
                   "deprecationReason": Null
                 },
                 {
                   "name": "INTERFACE",
-                  "description": "## Interface types\nInterface types are used to represent overlapping fields between multiple types, and can be queried for their concrete type.",
+                  "description": "## Interface types\n\nInterface types are used to represent overlapping fields between multiple types, and can be queried for their concrete type.",
                   "isDeprecated": false,
                   "deprecationReason": Null
                 },
                 {
                   "name": "UNION",
-                  "description": "## Union types\nUnions are similar to interfaces but can not contain any fields on their own.",
+                  "description": "## Union types\n\nUnions are similar to interfaces but can not contain any fields on their own.",
                   "isDeprecated": false,
                   "deprecationReason": Null
                 },
                 {
                   "name": "ENUM",
-                  "description": "## Enum types\nLike scalars, enum types appear as the leaf nodes of GraphQL queries.",
+                  "description": "## Enum types\n\nLike scalars, enum types appear as the leaf nodes of GraphQL queries.",
                   "isDeprecated": false,
                   "deprecationReason": Null
                 },
                 {
                   "name": "INPUT_OBJECT",
-                  "description": "## Input objects\nRepresents complex values provided in queries _into_ the system.",
+                  "description": "## Input objects\n\nRepresents complex values provided in queries _into_ the system.",
                   "isDeprecated": false,
                   "deprecationReason": Null
                 },
                 {
                   "name": "LIST",
-                  "description": "## List types\nRepresent lists of other types. This library provides implementations for vectors and slices, but other Rust types can be extended to serve as GraphQL lists.",
+                  "description": "## List types\n\nRepresent lists of other types. This library provides implementations for vectors and slices, but other Rust types can be extended to serve as GraphQL lists.",
                   "isDeprecated": false,
                   "deprecationReason": Null
                 },
                 {
                   "name": "NON_NULL",
-                  "description": "## Non-null types\nIn GraphQL, nullable types are the default. By putting a `!` after a type, it becomes non-nullable.",
+                  "description": "## Non-null types\n\nIn GraphQL, nullable types are the default. By putting a `!` after a type, it becomes non-nullable.",
                   "isDeprecated": false,
                   "deprecationReason": Null
                 }
@@ -794,6 +830,7 @@ pub(crate) fn schema_introspection_result() -> value::Value {
                   "args": [
                     {
                       "name": "id",
+                      "description": Null,
                       "description": "id of the droid",
                       "type": {
                         "kind": "NON_NULL",
@@ -956,6 +993,12 @@ pub(crate) fn schema_introspection_result() -> value::Value {
                 },
                 {
                   "name": "MUTATION",
+                  "description": Null,
+                  "isDeprecated": false,
+                  "deprecationReason": Null
+                },
+                {
+                  "name": "SUBSCRIPTION",
                   "description": Null,
                   "isDeprecated": false,
                   "deprecationReason": Null
@@ -1274,11 +1317,13 @@ pub(crate) fn schema_introspection_result() -> value::Value {
             }
           ]
         }
-    })
+    });
+    sort_schema_value(&mut v);
+    v
 }
 
 pub(crate) fn schema_introspection_result_without_descriptions() -> value::Value {
-    graphql_value!({
+    let mut v = graphql_value!({
         "__schema": {
           "queryType": {
             "name": "Query"
@@ -2166,6 +2211,11 @@ pub(crate) fn schema_introspection_result_without_descriptions() -> value::Value
                   "deprecationReason": Null
                 },
                 {
+                  "name": "SUBSCRIPTION",
+                  "isDeprecated": false,
+                  "deprecationReason": Null
+                },
+                {
                   "name": "FIELD",
                   "isDeprecated": false,
                   "deprecationReason": Null
@@ -2458,5 +2508,7 @@ pub(crate) fn schema_introspection_result_without_descriptions() -> value::Value
             }
           ]
         }
-    })
+    });
+    sort_schema_value(&mut v);
+    v
 }

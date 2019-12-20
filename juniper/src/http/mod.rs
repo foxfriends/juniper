@@ -3,13 +3,18 @@
 pub mod graphiql;
 pub mod playground;
 
-use serde::de::Deserialize;
-use serde::ser::{self, Serialize, SerializeMap};
+use serde::{
+    de::Deserialize,
+    ser::{self, Serialize, SerializeMap},
+};
+use serde_derive::{Deserialize, Serialize};
 
-use ast::InputValue;
-use executor::ExecutionError;
-use value::{DefaultScalarValue, ScalarRefValue, ScalarValue};
-use {FieldError, GraphQLError, GraphQLType, RootNode, Value, Variables};
+use crate::{
+    ast::InputValue,
+    executor::ExecutionError,
+    value::{DefaultScalarValue, ScalarRefValue, ScalarValue},
+    FieldError, GraphQLError, GraphQLType, RootNode, Value, Variables,
+};
 
 /// The expected structure of the decoded JSON document for either POST or GET requests.
 ///
@@ -35,7 +40,7 @@ where
     S: ScalarValue,
 {
     /// Returns the `operation_name` associated with this request.
-    fn operation_name(&self) -> Option<&str> {
+    pub fn operation_name(&self) -> Option<&str> {
         self.operation_name.as_ref().map(|oper_name| &**oper_name)
     }
 
@@ -59,9 +64,9 @@ where
         variables: Option<InputValue<S>>,
     ) -> Self {
         GraphQLRequest {
-            query: query,
-            operation_name: operation_name,
-            variables: variables,
+            query,
+            operation_name,
+            variables,
         }
     }
 
@@ -80,7 +85,7 @@ where
         MutationT: GraphQLType<S, Context = CtxT>,
         for<'b> &'b S: ScalarRefValue<'b>,
     {
-        GraphQLResponse(::execute(
+        GraphQLResponse(crate::execute(
             &self.query,
             self.operation_name(),
             root_node,
@@ -155,8 +160,7 @@ where
 #[cfg(any(test, feature = "expose-test-schema"))]
 #[allow(missing_docs)]
 pub mod tests {
-    use serde_json;
-    use serde_json::Value as Json;
+    use serde_json::{self, Value as Json};
 
     /// Normalized response content we expect to get back from
     /// the http framework integration we are testing.
@@ -328,7 +332,7 @@ pub mod tests {
 
     fn test_invalid_field<T: HTTPIntegration>(integration: &T) {
         // {hero{blah}}
-        let response = integration.get("/?query=%7Bhero%blah%7D%7D");
+        let response = integration.get("/?query=%7Bhero%7Bblah%7D%7D");
         assert_eq!(response.status_code, 400);
         let response = integration.post("/", r#"{"query": "{hero{blah}}"}"#);
         assert_eq!(response.status_code, 400);

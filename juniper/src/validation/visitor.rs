@@ -1,14 +1,15 @@
 use std::borrow::Cow;
 
-use ast::{
-    Arguments, Definition, Directive, Document, Field, Fragment, FragmentSpread, InlineFragment,
-    InputValue, Operation, OperationType, Selection, Type, VariableDefinitions,
+use crate::{
+    ast::{
+        Arguments, Definition, Directive, Document, Field, Fragment, FragmentSpread,
+        InlineFragment, InputValue, Operation, OperationType, Selection, Type, VariableDefinitions,
+    },
+    parser::Spanning,
+    schema::meta::Argument,
+    validation::{multi_visitor::MultiVisitorCons, ValidatorContext, Visitor},
+    value::ScalarValue,
 };
-use parser::Spanning;
-use schema::meta::Argument;
-use validation::multi_visitor::MultiVisitorCons;
-use validation::{ValidatorContext, Visitor};
-use value::ScalarValue;
 
 #[doc(hidden)]
 pub fn visit<'a, A, B, S>(
@@ -62,6 +63,17 @@ fn visit_definitions<'a, S, V>(
             }) => ctx
                 .schema
                 .concrete_mutation_type()
+                .map(|t| Type::NonNullNamed(Cow::Borrowed(t.name().unwrap()))),
+            Definition::Operation(Spanning {
+                item:
+                    Operation {
+                        operation_type: OperationType::Subscription,
+                        ..
+                    },
+                ..
+            }) => ctx
+                .schema
+                .concrete_subscription_type()
                 .map(|t| Type::NonNullNamed(Cow::Borrowed(t.name().unwrap()))),
         };
 
@@ -353,7 +365,7 @@ fn enter_input_value<'a, S, V>(
     S: ScalarValue,
     V: Visitor<'a, S>,
 {
-    use InputValue::*;
+    use crate::InputValue::*;
 
     let start = &input_value.start;
     let end = &input_value.end;
@@ -376,7 +388,7 @@ fn exit_input_value<'a, S, V>(
     S: ScalarValue,
     V: Visitor<'a, S>,
 {
-    use InputValue::*;
+    use crate::InputValue::*;
 
     let start = &input_value.start;
     let end = &input_value.end;

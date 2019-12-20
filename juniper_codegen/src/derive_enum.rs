@@ -1,9 +1,9 @@
 use proc_macro2::TokenStream;
 
-use syn;
-use syn::{Data, DeriveInput, Fields, Variant};
+use quote::quote;
+use syn::{self, Data, DeriveInput, Fields, Variant};
 
-use util::*;
+use crate::util::*;
 
 #[derive(Default, Debug)]
 struct EnumAttrs {
@@ -136,7 +136,7 @@ pub fn impl_enum(ast: &syn::DeriveInput, is_internal: bool) -> TokenStream {
     // Parse attributes.
     let ident = &ast.ident;
     let attrs = EnumAttrs::from_input(ast);
-    let name = attrs.name.unwrap_or(ast.ident.to_string());
+    let name = attrs.name.unwrap_or_else(|| ast.ident.to_string());
 
     let meta_description = match attrs.description {
         Some(descr) => quote! { let meta = meta.description(#descr); },
@@ -165,7 +165,7 @@ pub fn impl_enum(ast: &syn::DeriveInput, is_internal: bool) -> TokenStream {
         // Build value.
         let name = var_attrs
             .name
-            .unwrap_or(::util::to_upper_snake_case(&variant.ident.to_string()));
+            .unwrap_or_else(|| crate::util::to_upper_snake_case(&variant.ident.to_string()));
         let descr = match var_attrs.description {
             Some(s) => quote! { Some(#s.to_string())  },
             None => quote! { None },
@@ -223,7 +223,7 @@ pub fn impl_enum(ast: &syn::DeriveInput, is_internal: bool) -> TokenStream {
             where __S: 'r,
             {
                 let meta = registry.build_enum_type::<#ident>(&(), &[
-                    #(#values)*
+                    #values
                 ]);
                 #meta_description
                 meta.into_meta()
@@ -236,7 +236,7 @@ pub fn impl_enum(ast: &syn::DeriveInput, is_internal: bool) -> TokenStream {
                 _: &#juniper_path::Executor<Self::Context, __S>
             ) -> #juniper_path::Value<__S> {
                 match self {
-                    #(#resolves)*
+                    #resolves
                 }
             }
         }
@@ -248,7 +248,7 @@ pub fn impl_enum(ast: &syn::DeriveInput, is_internal: bool) -> TokenStream {
                 match v.as_enum_value().or_else(|| {
                     v.as_scalar_value::<String>().map(|s| s as &str)
                 }) {
-                    #(#from_inputs)*
+                    #from_inputs
                     _ => None,
                 }
             }
@@ -257,7 +257,7 @@ pub fn impl_enum(ast: &syn::DeriveInput, is_internal: bool) -> TokenStream {
         impl<__S: #juniper_path::ScalarValue> #juniper_path::ToInputValue<__S> for #ident {
             fn to_input_value(&self) -> #juniper_path::InputValue<__S> {
                 match self {
-                    #(#to_inputs)*
+                    #to_inputs
                 }
             }
         }

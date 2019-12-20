@@ -2,8 +2,8 @@
 
 If you've got a struct that can't be mapped directly to GraphQL, that contains
 computed fields or circular structures, you have to use a more powerful tool:
-the `graphql_object!` macro. This macro lets you define GraphQL objects similar
-to how you define methods in a Rust `impl` block for a type. Continuing with the
+the `object` procedural macro. This macro lets you define GraphQL object
+fields in a Rust `impl` block for a type. Continuing with the
 example from the last chapter, this is how you would define `Person` using the
 macro:
 
@@ -14,15 +14,24 @@ struct Person {
     age: i32,
 }
 
-juniper::graphql_object!(Person: () |&self| {
-    field name() -> &str {
+#[juniper::object]
+impl Person {
+    fn name(&self) -> &str {
         self.name.as_str()
     }
 
-    field age() -> i32 {
+    fn age(&self) -> i32 {
         self.age
     }
-});
+}
+
+// Note that this syntax generates an implementation of the GraphQLType trait,
+// the base impl of your struct can still be written like usual:
+impl Person {
+    pub fn hidden_from_graphql(&self) {
+        // [...]
+    }
+}
 
 # fn main() { }
 ```
@@ -42,12 +51,13 @@ struct House {
     inhabitants: Vec<Person>,
 }
 
-juniper::graphql_object!(House: () |&self| {
+#[juniper::object]
+impl House {
     // Creates the field inhabitantWithName(name), returning a nullable person
-    field inhabitant_with_name(name: String) -> Option<&Person> {
+    fn inhabitant_with_name(&self, name: String) -> Option<&Person> {
         self.inhabitants.iter().find(|p| p.name == name)
     }
-});
+}
 
 # fn main() {}
 ```
@@ -63,20 +73,86 @@ to `camelCase`. If you need to override the conversion, you can simply rename
 the field. Also, the type name can be changed with an alias:
 
 ```rust
+
 struct Person {
-    name: String,
-    website_url: String,
 }
 
-juniper::graphql_object!(Person: () as "PersonObject" |&self| {
-    field name() -> &str {
-        self.name.as_str()
+/// Doc comments are used as descriptions for GraphQL.
+#[juniper::object(
+    // With this attribtue you can change the public GraphQL name of the type.
+    name = "PersonObject",
+    // You can also specify a description here, which will overwrite 
+    // a doc comment description.
+    description = "...",
+)]
+impl Person {
+
+    /// A doc comment on the field will also be used for GraphQL.
+    #[graphql(
+        // Or provide a description here.
+        description = "...",
+    )]
+    fn doc_comment(&self) -> &str {
+        ""
     }
 
-    field websiteURL() -> &str {
-        self.website_url.as_str()
+    // Fields can also be renamed if required.
+    #[graphql(
+        name = "myCustomFieldName",
+    )]
+    fn renamed_field() -> bool {
+        true
     }
-});
+
+    // Deprecations also work as you'd expect.
+    // Both the standard Rust syntax and a custom attribute is accepted.
+    #[deprecated(note = "...")]
+    fn deprecated_standard() -> bool {
+        false
+    }
+
+    #[graphql(deprecated = "...")]
+    fn deprecated_graphql() -> bool {
+        true
+    }
+}
+
+# fn main() { }
+```
+
+## Customizing arguments
+
+Method field arguments can also be customized.
+
+They can have custom descriptions and default values.
+
+**Note**: The syntax for this is currently a little awkward. 
+This will become better once the [Rust RFC 2565](https://github.com/rust-lang/rust/issues/60406) is implemented.
+
+```rust
+
+struct Person {}
+
+#[juniper::object]
+impl Person {
+    #[graphql(
+        arguments(
+            arg1(
+                // Set a default value which will be injected if not present.
+                // The default can be any valid Rust expression, including a function call, etc.
+                default = true,
+                // Set a description.
+                description = "The first argument..."
+            ),
+            arg2(
+                default = 0,
+            )
+        )
+    )]
+    fn field1(&self, arg1: bool, arg2: i32) -> String {
+        format!("{} {}", arg1, arg2)
+    }
+}
 
 # fn main() { }
 ```
@@ -90,4 +166,4 @@ GraphQL fields expose more features than Rust's standard method syntax gives us:
 * Per-argument descriptions
 
 These, and more features, are described more thorougly in [the reference
-documentation](https://docs.rs/juniper/0.8.1/juniper/macro.graphql_object.html).
+documentation](https://docs.rs/juniper/latest/juniper/macro.object.html).

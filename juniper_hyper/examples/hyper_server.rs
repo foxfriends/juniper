@@ -5,13 +5,15 @@ extern crate juniper_hyper;
 extern crate pretty_env_logger;
 
 use futures::future;
-use hyper::rt::{self, Future};
-use hyper::service::service_fn;
-use hyper::Method;
-use hyper::{Body, Response, Server, StatusCode};
-use juniper::tests::model::Database;
-use juniper::EmptyMutation;
-use juniper::RootNode;
+use hyper::{
+    rt::{self, Future},
+    service::service_fn,
+    Body, Method, Response, Server, StatusCode,
+};
+use juniper::{
+    tests::{model::Database, schema::Query},
+    EmptyMutation, RootNode,
+};
 use std::sync::Arc;
 
 fn main() {
@@ -20,12 +22,12 @@ fn main() {
     let addr = ([127, 0, 0, 1], 3000).into();
 
     let db = Arc::new(Database::new());
-    let root_node = Arc::new(RootNode::new(db.clone(), EmptyMutation::<Database>::new()));
+    let root_node = Arc::new(RootNode::new(Query, EmptyMutation::<Database>::new()));
 
     let new_service = move || {
         let root_node = root_node.clone();
         let ctx = db.clone();
-        service_fn(move |req| -> Box<Future<Item = _, Error = _> + Send> {
+        service_fn(move |req| -> Box<dyn Future<Item = _, Error = _> + Send> {
             let root_node = root_node.clone();
             let ctx = ctx.clone();
             match (req.method(), req.uri().path()) {

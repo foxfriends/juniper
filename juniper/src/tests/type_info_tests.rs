@@ -1,11 +1,14 @@
 use indexmap::IndexMap;
 
-use executor::{ExecutionResult, Executor, Registry, Variables};
-use schema::meta::MetaType;
-use schema::model::RootNode;
-use types::base::{Arguments, GraphQLType};
-use types::scalars::EmptyMutation;
-use value::{ScalarRefValue, ScalarValue, Value};
+use crate::{
+    executor::{ExecutionResult, Executor, Registry, Variables},
+    schema::{meta::MetaType, model::RootNode},
+    types::{
+        base::{Arguments, GraphQLType},
+        scalars::EmptyMutation,
+    },
+    value::{ScalarRefValue, ScalarValue, Value},
+};
 
 pub struct NodeTypeInfo {
     name: String,
@@ -75,7 +78,7 @@ fn test_node() {
     let schema: RootNode<_, _> = RootNode::new_with_info(node, EmptyMutation::new(), node_info, ());
 
     assert_eq!(
-        ::execute(doc, None, &schema, &Variables::new(), &()),
+        crate::execute(doc, None, &schema, &Variables::new(), &()),
         Ok((
             Value::object(
                 vec![
