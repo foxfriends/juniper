@@ -170,7 +170,7 @@ pub enum MetaType<'a, S = DefaultScalarValue> {
 #[derive(Debug, Clone)]
 pub struct Field<'a, S> {
     #[doc(hidden)]
-    pub name: smartstring::alias::String,
+    pub name: String,
     #[doc(hidden)]
     pub description: Option<String>,
     #[doc(hidden)]

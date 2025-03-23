@@ -1177,7 +1177,7 @@ impl<'r, S: 'r> Registry<'r, S> {
         S: ScalarValue,
     {
         Field {
-            name: smartstring::SmartString::from(name),
+            name: String::from(name),
             description: None,
             arguments: None,
             field_type: self.get_type::<T>(info),
